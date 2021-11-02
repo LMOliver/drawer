@@ -1,0 +1,123 @@
+import debug from 'debug';
+import EventEmitter, { once } from 'events';
+import { WebSocket } from 'ws';
+const wsLog = debug('drawer:api:ws');
+/**
+ * @param {WebSocket} ws 
+ */
+async function join(ws) {
+	const joinMessage = JSON.stringify({ type: 'join_channel', channel: 'paintboard', channel_param: '' });
+	ws.send(joinMessage);
+	/**@type {[data: import('ws').RawData, isBinary: boolean]} */
+	const joinResp = (await Promise.race([
+		once(ws, 'message'),
+		once(ws, 'close').then(event => {
+			throw Object.assign(new Error('websocket closed before receiving response'), event);
+		}),
+	]));
+	const [message] = joinResp;
+	const { type, result } = JSON.parse(message.toString());
+	if (type === 'result' && result === 'success') {
+		return;
+	}
+	else {
+		ws.close();
+		throw Object.assign(new Error('incorrect response'), { resp: message });
+	}
+}
+/**
+ * @typedef {Readonly<{x:number,y:number,color:number,time:number}>} PaintboardUpdateEvent
+ */
+export class PaintboardWS extends EventEmitter {
+	/**
+	 * @readonly
+	 */
+	static CONNECTING = 'connecting';
+	/**
+	 * @readonly
+	 */
+	static CLOSED = 'closed';
+	/**
+	 * @readonly
+	 */
+	static OPEN = 'open';
+	/**
+	 * @param {string} href
+	 */
+	constructor(href) {
+		super();
+		this._websocketHref = href;
+		/**@type {typeof PaintboardWS['CLOSED'|'CONNECTING'|'OPEN']} */
+		this.readyState = PaintboardWS.CLOSED;
+		this.startTime = {
+			clock: Date.now(),
+			real: process.hrtime.bigint(),
+		};
+	}
+	/**
+	 * @param {WebSocket} ws 
+	 */
+	_bindWS(ws) {
+		this._ws = ws;
+		ws.on('message', message => {
+			const now = this.startTime.clock + Number(process.hrtime.bigint() - this.startTime.real) / 1e6; //asap
+			const { type, ...rest } = JSON.parse(message.toString());
+			if (type === 'paintboard_update') {
+				const { x, y, color } = rest;
+				this.emit('paint', { x, y, color, time: now });
+			}
+		});
+		ws.on('close', () => {
+			delete this._ws;
+			this.readyState = PaintboardWS.CLOSED;
+			wsLog('disconnected');
+			this.emit('close');
+		});
+	};
+	async _connect() {
+		try {
+			wsLog('connecting');
+			const ws = new WebSocket(this._websocketHref);
+			await Promise.race([
+				once(ws, 'open'),
+				once(ws, 'close').then(event => {
+					throw Object.assign(new Error('websocket closed before open'), event);
+				})
+			]);
+			await join(ws);
+			this._bindWS(ws);
+			wsLog('connected');
+			this.emit('open');
+		} catch (error) {
+			wsLog('%O', error);
+		}
+	}
+	/**
+	 * @returns {Promise<void>}
+	 */
+	initialize() {
+		if (this.readyState === PaintboardWS.CLOSED) {
+			this.readyState = PaintboardWS.CONNECTING;
+			/**@type {Promise<void>} */
+			this._connectPromise =
+				this._connect()
+					.then(() => {
+						this.readyState = PaintboardWS.OPEN;
+					})
+					.catch(error => {
+						this.readyState = PaintboardWS.CLOSED;
+						throw error;
+					})
+					.finally(() => {
+						delete this._connectPromise;
+					});
+			return this._connectPromise;
+		}
+		else if (this.readyState === PaintboardWS.CONNECTING) {
+			return /**@type {Promise<void>}*/(this._connectPromise);
+		}
+		else {
+			return Promise.resolve();
+		}
+	}
+}
