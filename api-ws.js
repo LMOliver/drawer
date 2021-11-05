@@ -1,6 +1,7 @@
 import debug from 'debug';
 import EventEmitter, { once } from 'events';
 import { WebSocket } from 'ws';
+import { currentTime } from './time.js';
 const wsLog = debug('drawer:api:ws');
 /**
  * @param {WebSocket} ws 
@@ -49,10 +50,6 @@ export class PaintboardWS extends EventEmitter {
 		this._websocketHref = href;
 		/**@type {typeof PaintboardWS['CLOSED'|'CONNECTING'|'OPEN']} */
 		this.readyState = PaintboardWS.CLOSED;
-		this.startTime = {
-			clock: Date.now(),
-			real: process.hrtime.bigint(),
-		};
 	}
 	/**
 	 * @param {WebSocket} ws 
@@ -60,14 +57,17 @@ export class PaintboardWS extends EventEmitter {
 	_bindWS(ws) {
 		this._ws = ws;
 		ws.on('message', message => {
-			const now = this.startTime.clock + Number(process.hrtime.bigint() - this.startTime.real) / 1e6; //asap
+			const now = currentTime(); // asap
 			const { type, ...rest } = JSON.parse(message.toString());
 			if (type === 'paintboard_update') {
 				const { x, y, color } = rest;
 				this.emit('paint', { x, y, color, time: now });
 			}
 		});
-		ws.on('close', () => {
+		once(ws, 'close').catch(error => {
+			wsLog('%O', error);
+			ws.close();
+		}).finally(() => {
 			delete this._ws;
 			this.readyState = PaintboardWS.CLOSED;
 			wsLog('disconnected');

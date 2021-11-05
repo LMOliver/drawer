@@ -26,20 +26,22 @@ export class Monitor {
 				board: this.board.readyState,
 			});
 		});
-		router.get('/board',/**@type {express.Handler} */(compression({ level: 1, filter: () => true })), async (req, res, next) => {
-			// TODO: add frequency limits
-			try {
-				await this.board.initialize();
-				const { height, width, data } = this.board.state;
-				res.setHeader('Content-Type', 'application/octet-stream');
-				res.write(Buffer.from(Uint32Array.from([height, width]).buffer));
-				res.write(data);
-				res.end();
-			} catch (e) {
-				log('%O', e);
-				res.status(500).write(e.message);
+		router.get('/board', [
+			/**@type {express.Handler} */(compression({ level: 1, filter: () => true })),
+			/**@type {express.Handler} */
+			(req, res, next) => {
+				// TODO: add frequency limits
+				this.board.initialize()
+					.then(() => {
+						const { height, width, data } = this.board.state;
+						res.setHeader('Content-Type', 'application/octet-stream');
+						res.write(Buffer.from(Uint32Array.from([height, width]).buffer));
+						res.write(data);
+						res.end();
+					})
+					.catch(next);
 			}
-		});
+		]);
 		return router;
 	}
 }

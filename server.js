@@ -1,5 +1,6 @@
 import debug from 'debug';
 import express from 'express';
+import { UserInputError } from './ensure.js';
 import { Monitor } from './monitor.js';
 
 const log = debug('drawer:server');
@@ -30,6 +31,18 @@ export class Server {
 		]);
 		app.use('/api', [
 			this.monitor.createRouter(),
+		]);
+		app.use([
+			/**@type {express.ErrorRequestHandler} */
+			(error, req, res, next) => {
+				if (error instanceof UserInputError) {
+					res.status(400).send(error.message);
+				}
+				else {
+					log('%O', error);
+					res.sendStatus(500);
+				}
+			}
 		]);
 		log('listening on port %d', this.port);
 		app.listen(this.port);

@@ -1,6 +1,8 @@
 import debug from 'debug';
 import EventEmitter, { once } from 'events';
 import { API } from './api.js';
+import { COLORS } from './constants.js';
+import { ensure } from './ensure.js';
 import { showColor, showTime } from './log.js';
 
 const log = debug('drawer:board');
@@ -41,8 +43,9 @@ export class Board extends EventEmitter {
 	 * @returns {import('./api.js').BoardState}
 	 */
 	get state() {
-		if (this._state !== null) {
-			return this._state;
+		if (this.readyState === Board.OPEN) {
+			/** @type {import('./api.js').BoardState}*/
+			return (this._state);
 		}
 		else {
 			throw new Error(`board is ${this.readyState}`);
@@ -74,21 +77,42 @@ export class Board extends EventEmitter {
 		log('initializing');
 		const state = await this._build();
 		this._state = state;
+		const errorEmitter = new EventEmitter();
 		/**@type {(event:import('./api.js').PaintboardUpdateEvent)=>void} */
 		const onPaint = event => {
-			const { x, y, color, time } = event;
-			stateSet(state, x, y, color);
-			updateLog('[%s] (%s,%s) %s', showTime(time), x.toString().padStart(3, ' '), y.toString().padStart(3, ' '), showColor(color));
-			this.emit('paint', event);
+			try {
+				const { x, y, color, time } = ensure({
+					type: 'object',
+					entires: {
+						x: { type: 'integer', min: 0, max: state.width - 1 },
+						y: { type: 'integer', min: 0, max: state.height - 1 },
+						color: { type: 'integer', min: 0, max: COLORS.length - 1 },
+						time: { type: 'real', min: 0, max: Infinity },
+					}
+				})(event);
+				stateSet(state, x, y, color);
+				updateLog('[%s] (%s,%s) %s', showTime(time), x.toString().padStart(3, ' '), y.toString().padStart(3, ' '), showColor(color));
+				this.emit('paint', event);
+			}
+			catch (error) {
+				errorEmitter.emit('error', error);
+			}
 		};
 		this._pbws.on('paint', onPaint);
-		this._pbws.once('close', () => {
-			this._state = null;
-			this._pbws.off('paint', onPaint);
-			this.readyState = Board.CLOSED;
-			log('closed');
-			this.emit('close');
-		});
+		Promise.race([
+			once(this._pbws, 'close'),
+			once(errorEmitter, 'nonexist'),
+		])
+			.catch(error => {
+				log('%O', error);
+			})
+			.finally(() => {
+				this._state = null;
+				this._pbws.off('paint', onPaint);
+				this.readyState = Board.CLOSED;
+				log('closed');
+				this.emit('close');
+			});
 		log('initialized');
 	}
 	initialize() {
