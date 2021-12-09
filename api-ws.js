@@ -23,7 +23,7 @@ async function join(ws) {
 	}
 	else {
 		ws.close();
-		throw Object.assign(new Error('incorrect response'), { resp: message });
+		throw Object.assign(new Error('incorrect response'), { resp: message.toString() });
 	}
 }
 /**
@@ -89,7 +89,7 @@ export class PaintboardWS extends EventEmitter {
 			wsLog('connected');
 			this.emit('open');
 		} catch (error) {
-			wsLog('%O', error);
+			throw error;
 		}
 	}
 	/**

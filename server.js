@@ -2,6 +2,7 @@ import debug from 'debug';
 import express from 'express';
 import { UserInputError } from './ensure.js';
 import { Monitor } from './monitor.js';
+import { UserManager } from './userManager.js';
 
 const log = debug('drawer:server');
 
@@ -12,12 +13,14 @@ const log = debug('drawer:server');
  */
 export class Server {
 	/**
-	 * @param {{monitor:Monitor}} dependencies
+	 * @param {{monitor:Monitor,userManager:UserManager}} dependencies
 	 * @param {ServerConfig} config
 	 */
-	constructor({ monitor }, { port }) {
-		this.port = port;
+	constructor({ monitor, userManager }, { port }) {
 		this.monitor = monitor;
+		this.userManager = userManager;
+
+		this.port = port;
 		this.app = this.createApp();
 	}
 	createApp() {
@@ -31,6 +34,8 @@ export class Server {
 		]);
 		app.use('/api', [
 			this.monitor.createRouter(),
+			express.Router()
+				.use('/auth', this.userManager.router())
 		]);
 		app.use([
 			/**@type {express.ErrorRequestHandler} */

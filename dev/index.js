@@ -8,15 +8,10 @@ import vuePlugin from '@vitejs/plugin-vue';
 async function main() {
 	const drawer = new Drawer(config());
 	const devServer = await createServer({
-		configFile: false,
-		// @ts-ignore for import.meta
-		root: resolve(fileURLToPath(import.meta.url), '../../client'),
+		root: '../website',
 		server: {
 			middlewareMode: 'html',
 		},
-		plugins: [
-			vuePlugin(),
-		],
 	});
 	drawer.server.app.use(devServer.middlewares);
 }

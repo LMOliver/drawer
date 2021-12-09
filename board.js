@@ -2,6 +2,7 @@ import debug from 'debug';
 import EventEmitter, { once } from 'events';
 import { API } from './api.js';
 import { COLORS } from './constants.js';
+import { Database } from './database.js';
 import { ensure } from './ensure.js';
 import { showColor, showTime } from './log.js';
 
@@ -26,13 +27,13 @@ export class Board extends EventEmitter {
 	/**@readonly */
 	static OPEN = 'open';
 	/**
-	 * @param {{api:API}} dependencies
+	 * @param {{api:API,database:Database}} dependencies
 	 * @param {{}} config
 	 */
-	constructor({ api }, { }) {
+	constructor({ api, database }, { }) {
 		super();
 		this._api = api;
-		this._pbws = this._api.createWS();
+		this._database = database;
 		this.readyState = Board.CLOSED;
 		/**
 		 * @type {import('./api.js').BoardState|null}
@@ -52,32 +53,34 @@ export class Board extends EventEmitter {
 		}
 	}
 	async _build() {
-		await this._pbws.initialize();
+		const pbws = this._api.createWS();
+		await pbws.initialize();
 		/**@type {import('./api.js').PaintboardUpdateEvent[]} */
 		let paints = [];
 		/**@type {(event:import('./api.js').PaintboardUpdateEvent)=>void} */
 		const onPaint = event => {
 			paints.push(event);
 		};
-		this._pbws.on('paint', onPaint);
+		pbws.on('paint', onPaint);
 		const state = await Promise.race([
 			this._api.getBoardState(),
-			once(this._pbws, 'close').then(() => {
+			once(pbws, 'close').then(() => {
 				throw new Error('websocket closed before boardstate is fetched');
 			}),
 		]);
-		this._pbws.off('paint', onPaint);
+		pbws.off('paint', onPaint);
 		for (const { x, y, color } of paints) {
 			updateLog('pre (%s,%s) %s', x.toString().padStart(3, ' '), y.toString().padStart(3, ' '), showColor(color));
 			stateSet(state, x, y, color);
 		}
-		return state;
+		return { pbws, state };
 	}
 	async _connect() {
 		log('initializing');
-		const state = await this._build();
+		const { pbws, state } = await this._build();
 		this._state = state;
 		const errorEmitter = new EventEmitter();
+		let errorEmitted = false;
 		/**@type {(event:import('./api.js').PaintboardUpdateEvent)=>void} */
 		const onPaint = event => {
 			try {
@@ -92,15 +95,23 @@ export class Board extends EventEmitter {
 				})(event);
 				stateSet(state, x, y, color);
 				updateLog('[%s] (%s,%s) %s', showTime(time), x.toString().padStart(3, ' '), y.toString().padStart(3, ' '), showColor(color));
+				this._database.paints().then(
+					collection => collection.insertOne({
+						time: new Date(time), x, y, color
+					})
+				).catch(log);
 				this.emit('paint', event);
 			}
 			catch (error) {
-				errorEmitter.emit('error', error);
+				if (!errorEmitted) {
+					errorEmitter.emit('error', error);
+					errorEmitted = true;
+				}
 			}
 		};
-		this._pbws.on('paint', onPaint);
+		pbws.on('paint', onPaint);
 		Promise.race([
-			once(this._pbws, 'close'),
+			once(pbws, 'close'),
 			once(errorEmitter, 'nonexist'),
 		])
 			.catch(error => {
@@ -108,7 +119,7 @@ export class Board extends EventEmitter {
 			})
 			.finally(() => {
 				this._state = null;
-				this._pbws.off('paint', onPaint);
+				pbws.off('paint', onPaint);
 				this.readyState = Board.CLOSED;
 				log('closed');
 				this.emit('close');

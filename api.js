@@ -13,6 +13,7 @@ import { showColor } from './log.js';
 }>} APIURLs
  * @typedef {Readonly<{x:number,y:number,color:number,time:number}>} PaintboardUpdateEvent
  */
+const validationLog = debug('drawer:api:validate');
 const paintLog = debug('drawer:api:paint');
 const boardLog = debug('drawer:api:board');
 /**
@@ -26,6 +27,45 @@ export class API {
 	constructor({ }, input) {
 		this.urls = input;
 		// log('API URLs %O', this.urls);
+	}
+	/**
+	 * @param {Token} param0 
+	 * @return {Promise<string|null>}
+	 */
+	async isValidToken({ uid, clientID }) {
+		try {
+			validationLog('validate uid=%s', uid);
+			const resp = await fetch(this.urls.paint, {
+				method: "POST",
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+					'Pragma': 'no-cache',
+					'Cache-Control': 'no-cache',
+					'Cookie': `_uid=${uid}; __client_id=${clientID}`,
+					'Referrer': 'https://www.luogu.com.cn/paintBoard',
+				},
+				body: `x=${-1}&y=${-1}&color=${-1}`,
+			});
+			if (!resp.ok) {
+				throw Object.assign(new Error(`${resp.status} ${resp.statusText}`), { status: resp.status, data: resp.statusText });
+			}
+			/**
+			 * @type {{status:number,data:string}}
+			 */
+			const result = (await resp.json());
+			const { status, data } = result;
+			if (status === 401) {
+				validationLog('validate uid=%s failed: %s', uid, data);
+				return data === '没有登录' ? '身份无效' : data;
+			}
+			else {
+				validationLog('validate uid=%s successful', uid);
+				return null;
+			}
+		} catch (error) {
+			validationLog('validate uid=%s failed: %o', uid, error);
+			throw error;
+		}
 	}
 	/**
 	 * @param {Token} param1
