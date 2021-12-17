@@ -28,7 +28,7 @@ export const ensureToken = ensure({
 		clientID: { type: 'string', pattern: /^[0-9a-z]{40}$/ },
 	}
 });
-const ensureCookies = ensure({ type: 'string', pattern: /^(?:[^=; ]+=[^=; ]*(?:; |$))*$/ });
+const ensureCookies = ensure({ type: 'string', pattern: /^(?:|(?:[^=; ]+=[^=; ]*(?:; |$))*)$/ });
 /**
  * @param {string} rawCookies
  */
@@ -99,7 +99,7 @@ export class AuthManager extends EventEmitter {
 			}
 		}
 		catch (error) {
-			console.log(error);
+			// console.log(error);
 			if (error instanceof UserInputError) {
 				return null;
 			}
@@ -113,7 +113,7 @@ export class AuthManager extends EventEmitter {
 	 */
 	checkAuth() {
 		return [
-			/**@type {import('express').Handler}*/(cookieParser()),
+			// /**@type {import('express').Handler}*/(cookieParser()),
 			(req, res, next) => {
 				this.getAuthState(req)
 					.then(result => {
@@ -152,7 +152,7 @@ export class AuthManager extends EventEmitter {
 			},
 		});
 		return [
-			express.json(),
+			express.json({ limit: '5kb' }),
 			rateLimiter(30 * 1000, 3),
 			(req, res, next) => {
 				const { type, token } = ensureInput(req.body);
@@ -160,7 +160,7 @@ export class AuthManager extends EventEmitter {
 				this.api.validateToken(token)
 					.then(result => {
 						if (result.ok) {
-							const uid = this.userManager.generateUIDByPaintToken(token, result);
+							const uid = this.userManager.getUIDByPaintToken(token, result);
 							log('login attempt success: uid=%s', result.uid);
 							return this.database.auth()
 								.then(async auth => {
@@ -174,7 +174,7 @@ export class AuthManager extends EventEmitter {
 									res.cookie('auth-token', authToken, addCookie);
 									if (await this.userManager.createUserIfNotExist(uid)) {
 										if (type === 'luogu-paint-token') {
-											await this.drawer.tokenManager.addToken(token, uid, uid, 'working');
+											await this.drawer.tokenManager.addValidToken(token, uid, uid, 'waiting');
 										}
 									}
 									await auth.insertOne({ token: authToken, uid, createdAt: new Date() });

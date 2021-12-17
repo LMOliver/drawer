@@ -6,7 +6,7 @@
 	"type": "module",
 	"scripts": {
 		"start": "node --experimental-specifier-resolution=node index.js",
-		"dev": "node --experimental-specifier-resolution=node dev/index.js",
+		"dev": "DEBUG=drawer:* node --experimental-specifier-resolution=node dev/index.js",
 		"test": "echo \"Error: no test specified\" && exit 1"
 	},
 	"repository": {

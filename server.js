@@ -30,14 +30,12 @@ export class Server {
 	}
 	createApp() {
 		const app = express();
-		app.use([
+		app.use('/api', [
 			/**@type {express.Handler} */
 			(req, res, next) => {
 				log('%s %s', req.method, req.originalUrl);
 				next();
-			}
-		]);
-		app.use('/api', [
+			},
 			rateLimiter(0.3 * 1000, 50),
 			express.Router()
 				.use('/auth', this.authManager.router())

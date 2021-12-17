@@ -9,7 +9,7 @@ import { RateLimiter, rateLimiter } from './rateLimiter.js';
 const log = debug('drawer:token');
 
 /**
- * @typedef {{valid:true,state:'normal'|'waiting'|'abmormal',message:string}|{valid:false}} TokenStatus
+ * @typedef {'working'|'waiting'|'busy'|'invalid'} TokenStatus
  */
 
 export class TokenManager extends EventEmitter {
@@ -63,12 +63,21 @@ export class TokenManager extends EventEmitter {
 	 * @param {import('./api.js').PaintToken} token
 	 * @param {string} owner
 	 * @param {string} receiver
-	 * @param {string} status
+	 * @param {TokenStatus} status
 	 */
-	async addToken(token, owner, receiver, status) {
+	async addValidToken(token, owner, receiver, status) {
 		const tokens = await this.database.tokens();
 		log('add token owner=%s receiver=%s status=%s', owner, receiver, status);
-		await tokens.insertOne({ token, owner, receiver, status });
+		await tokens.updateOne({ owner }, { $set: { token, owner, receiver, status } }, { upsert: true });
+	}
+	/**
+	 * @param {string} owner 
+	 * @param {string} receiver 
+	 */
+	async updateToken(owner, receiver) {
+		log('update token owner=%s receiver=%s', owner, receiver);
+		const tokens = await this.database.tokens();
+		await tokens.updateOne({ owner }, { owner, receiver });
 	}
 	/**
 	 * @param {'owner'|'receiver'} type
@@ -172,45 +181,54 @@ export class TokenManager extends EventEmitter {
 	/**
 	 * @returns {express.Handler[]}
 	 */
-	uploadTokenHandler() {
+	uploadOrUpdateTokenHandler() {
 		const ensureInput = ensure({
 			type: 'object',
 			entires: {
-				token: ensureToken,
+				token: {
+					type: 'union',
+					branches: [
+						ensureToken,
+						{ type: 'constant', value: undefined },
+					]
+				},
 				receiver: ensureUID,
 			},
 		});
 		const INVALID_COST = 30 * 1000;
-		const ADD_ERROR_COST = 15 * 1000;
+		const ERROR_COST = 15 * 1000;
 		const SUCCESS_COST = 5 * 1000;
 		const rateLimiter = new RateLimiter(INVALID_COST * 5);
 		return [
 			...this.authManager.checkAndRequireAuth(),
 			rateLimiter.handler(SUCCESS_COST),
 			express.json({ limit: '5kb' }),
-			(req, res, next) => {
-				const { token, receiver } = ensureInput(req.body);
-				this.api.validateToken(token)
-					.then(result => {
+			async (req, res, next) => {
+				try {
+					const { uid } = res.locals.auth;
+					const { token, receiver } = ensureInput(req.body);
+					if (token !== undefined) {
+						const result = await this.api.validateToken(token);
 						if (result.ok) {
-							this.addToken(token, result.uid, receiver, 'usable')
-								.then(() => {
-									res.status(200).end();
-								})
-								.catch(error => {
-									rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - ADD_ERROR_COST);
-									next(error);
-								});
+							const uid = this.userManager.getUIDByPaintToken(token, result);
+							await this.addValidToken(token, uid, receiver, 'waiting');
+							res.status(200).end();
 						}
 						else {
 							rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
 							res.status(401).send(result.reason).end();
 						}
-					})
-					.catch(next);
+					}
+					else {
+						await this.updateToken(uid, receiver);
+					}
+				}
+				catch (error) {
+					rateLimiter.add(rateLimiter.key(req, res), ERROR_COST - SUCCESS_COST);
+					next(error);
+				}
 			},
 		];
-		// this.addToken();
 	}
 	/**
 	 * @returns {express.Handler[]}
@@ -233,6 +251,7 @@ export class TokenManager extends EventEmitter {
 	router() {
 		return express.Router()
 			.get('/myTokens', this.myTokensHandler())
-			.get('/tokensForMe', this.tokensForMeHandler());
+			.get('/tokensForMe', this.tokensForMeHandler())
+			.post('/tokens', this.uploadOrUpdateTokenHandler());
 	}
 }

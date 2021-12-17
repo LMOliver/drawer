@@ -20,7 +20,7 @@ export class UserManager {
 	 * @param {import('./api.js').PaintToken} _token
 	 * @param {import('./api.js').SuccessfulTokenValidationResult} result
 	 */
-	generateUIDByPaintToken(_token, result) {
+	getUIDByPaintToken(_token, result) {
 		return `${result.uid}@Luogu`;
 	}
 	/**
