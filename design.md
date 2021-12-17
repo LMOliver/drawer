@@ -16,6 +16,11 @@
 
 数据库。
 
+auth: {token:string,uid:string,createdAt:Date}
+users: {uid:string}
+tasks: {image:{height:number,width:number,data:Binary},position:{left:number,top:number},user:string,verified:boolean}
+tokens: {}
+
 ### `Board`
 
 利用 `API` 同步绘板状态。

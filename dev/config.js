@@ -17,6 +17,8 @@ export function config() {
 			databaseName: 'paintboard-dev',
 		},
 		userManager: {},
+		authManager: {},
+		tokenManager: {},
 		monitor: {},
 		server: {
 			port: 3000,

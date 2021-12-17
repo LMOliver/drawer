@@ -7,8 +7,11 @@ import vuePlugin from '@vitejs/plugin-vue';
 
 async function main() {
 	const drawer = new Drawer(config());
+	// @ts-ignore for import.meta
+	const root = resolve(fileURLToPath(import.meta.url), '../../../website');
+	// console.log(root);
 	const devServer = await createServer({
-		root: '../website',
+		root,
 		server: {
 			middlewareMode: 'html',
 		},

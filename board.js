@@ -3,7 +3,7 @@ import EventEmitter, { once } from 'events';
 import { API } from './api.js';
 import { COLORS } from './constants.js';
 import { Database } from './database.js';
-import { ensure } from './ensure.js';
+import { ensure } from '../ensure';
 import { showColor, showTime } from './log.js';
 
 const log = debug('drawer:board');
@@ -45,8 +45,7 @@ export class Board extends EventEmitter {
 	 */
 	get state() {
 		if (this.readyState === Board.OPEN) {
-			/** @type {import('./api.js').BoardState}*/
-			return (this._state);
+			return /** @type {import('./api.js').BoardState}*/(this._state);
 		}
 		else {
 			throw new Error(`board is ${this.readyState}`);

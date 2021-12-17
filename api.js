@@ -3,7 +3,7 @@ import fetch from 'node-fetch';
 import { PaintboardWS } from './api-ws.js';
 import { showColor } from './log.js';
 /**
- * @typedef {{uid:string,clientID:string}} Token
+ * @typedef {import('../api/api.js').PaintToken} PaintToken
  * @typedef {{x:number,y:number,color:number}} Paint
  * @typedef {{data:Buffer,height:number,width:number}} BoardState
 @typedef {Readonly<{
@@ -18,6 +18,7 @@ const paintLog = debug('drawer:api:paint');
 const boardLog = debug('drawer:api:board');
 /**
  * @typedef {APIURLs} APIConfig
+ * @typedef {{uid:string}} SuccessfulTokenValidationResult
  */
 export class API {
 	/**
@@ -29,10 +30,10 @@ export class API {
 		// log('API URLs %O', this.urls);
 	}
 	/**
-	 * @param {Token} param0 
-	 * @return {Promise<string|null>}
+	 * @param {PaintToken} token 
+	 * @return {Promise<({ok:true}&SuccessfulTokenValidationResult)|{ok:false,reason:string}>}
 	 */
-	async isValidToken({ uid, clientID }) {
+	async validateToken({ uid, clientID }) {
 		try {
 			validationLog('validate uid=%s', uid);
 			const resp = await fetch(this.urls.paint, {
@@ -49,26 +50,23 @@ export class API {
 			if (!resp.ok) {
 				throw Object.assign(new Error(`${resp.status} ${resp.statusText}`), { status: resp.status, data: resp.statusText });
 			}
-			/**
-			 * @type {{status:number,data:string}}
-			 */
-			const result = (await resp.json());
+			const result = /**@type {{status:number,data:string}}*/(await resp.json());
 			const { status, data } = result;
 			if (status === 401) {
 				validationLog('validate uid=%s failed: %s', uid, data);
-				return data === '没有登录' ? '身份无效' : data;
+				return { ok: false, reason: data === '没有登录' ? '身份无效' : data };
 			}
 			else {
 				validationLog('validate uid=%s successful', uid);
-				return null;
+				return { ok: true, uid };
 			}
 		} catch (error) {
-			validationLog('validate uid=%s failed: %o', uid, error);
+			validationLog('validate uid=%s %O', uid, error);
 			throw error;
 		}
 	}
 	/**
-	 * @param {Token} param1
+	 * @param {PaintToken} param1
 	 * @param {Paint} param2 
 	 * @returns {Promise<{status:number,data:string}>}
 	 */
@@ -89,10 +87,8 @@ export class API {
 			if (!resp.ok) {
 				throw Object.assign(new Error(`${resp.status} ${resp.statusText}`), { status: resp.status, data: resp.statusText });
 			}
-			/**
-			 * @type {{status:number,data:string}}
-			 */
-			const result = (await resp.json());
+
+			const result =/** @type {{status:number,data:string}}*/(await resp.json());
 			const { status, data } = result;
 			if (status >= 200 && status < 300) {
 				return { status, data };

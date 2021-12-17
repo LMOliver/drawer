@@ -1,9 +1,11 @@
 import debug from 'debug';
 import { API } from './api.js';
+import { AuthManager } from './authManager.js';
 import { Board } from './board.js';
 import { Database } from './database.js';
 import { Monitor } from './monitor.js';
 import { Server } from './server.js';
+import { TokenManager } from './tokenManager.js';
 import { UserManager } from './userManager.js';
 
 /**
@@ -13,6 +15,8 @@ import { UserManager } from './userManager.js';
 	database: typeof Database;
 	monitor: typeof Monitor;
 	userManager:typeof UserManager;
+	authManager:typeof AuthManager;
+	tokenManager:typeof TokenManager;
 	server: typeof Server;
 }} DrawComponents
 @typedef {{[name in keyof DrawComponents]:ConstructorParameters<DrawComponents[name]>[1]}} DrawConfig
@@ -24,11 +28,13 @@ export class Drawer {
 	 */
 	constructor(config) {
 		debug('drawer')('config %O', config);
-		this.api = new API({}, config.api);
-		this.database = new Database({}, config.database);
-		this.board = new Board({ api: this.api, database: this.database }, config.board);
-		this.monitor = new Monitor({ board: this.board }, config.monitor);
-		this.userMagager = new UserManager({ api: this.api, database: this.database }, config.userManager);
-		this.server = new Server({ monitor: this.monitor, userManager: this.userMagager }, config.server);
+		this.api = new API(this, config.api);
+		this.database = new Database(this, config.database);
+		this.board = new Board(this, config.board);
+		this.monitor = new Monitor(this, config.monitor);
+		this.userManager = new UserManager(this, config.userManager);
+		this.authManager = new AuthManager(this, config.authManager);
+		this.tokenManager = new TokenManager(this, config.tokenManager);
+		this.server = new Server(this, config.server);
 	}
 }

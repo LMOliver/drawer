@@ -1,116 +1,47 @@
-import express from 'express';
-import cookieParser from 'cookie-parser';
 import debug from 'debug';
 import { Database } from './database.js';
-import { ensure } from './ensure.js';
-import { API } from './api.js';
-import crypto from 'crypto';
-import { ensureUUID } from '../utils/index.js';
 
-const userLog = debug('drawer:user');
+const log = debug('drawer:user');
 
 /**
 @typedef {{
 	
 }} UserManagerConfig
- */
-
-const ensureUID = ensure({ type: 'string', pattern: /^[1-9]\d{0,7}$/ });
+*/
 export class UserManager {
 	/**
-	 * @param {{api:API,database:Database}} dependencies
+	 * @param {{database:Database}} dependencies 
 	 * @param {UserManagerConfig} config
 	 */
-	constructor({ api, database }, { }) {
-		this.api = api;
+	constructor({ database }, { }) {
 		this.database = database;
 	}
 	/**
-	 * @returns {express.Handler[]}
+	 * @param {import('./api.js').PaintToken} _token
+	 * @param {import('./api.js').SuccessfulTokenValidationResult} result
 	 */
-	authMiddleware() {
-		const ensureAuthToken = ensureUUID;
-		return [
-			/**@type {import('express').Handler}*/(cookieParser()),
-			(req, res, next) => {
-				const uid = ensureUID(req.cookies.uid);
-				const authToken = ensureAuthToken(req.cookies.token);
-
-				this.database.auth()
-					.then(auth => auth.findOne({ token: authToken }))
-					.then(document => {
-						if (document === null || document.uid !== uid) {
-							res.status(401).send('token 无效').end();
-						}
-						else {
-							// TODO: update auth table
-							res.locals.uid = uid;
-							next();
-						}
-					})
-					.catch(next);
-			},
-		];
+	generateUIDByPaintToken(_token, result) {
+		return `${result.uid}@Luogu`;
 	}
 	/**
-	 * @returns {express.Handler[]}
+	 * @param {string} uid 
 	 */
-	login() {
-		const ensureCID = ensure({ type: 'string', pattern: /^[0-9a-z]{40}$/ });
-		return [
-			express.json(),
-			(req, res, next) => {
-				const uid = ensureUID(req.body.uid);
-				const clientID = ensureCID(req.body.clientID);
-				userLog('login uid=%s', uid);
-				this.api.isValidToken({ uid, clientID })
-					.then(error => {
-						if (error === null) {
-							return this.database.auth()
-								.then(async auth => {
-									const token = crypto.randomUUID();
-									res.status(200);
-									res.cookie('uid', uid, { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' });
-									res.cookie('token', token, { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' });
-									await auth.insertOne({ token, uid, createdAt: new Date() });
-									res.json({ uid }).end();
-								});
-						}
-						else {
-							userLog('login uid=%s failed: %s', error);
-							res.status(401);
-							res.cookie('uid', '', { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' });
-							res.cookie('token', '', { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' });
-							res.send(error).end();
-						}
-					})
-					.catch(next);
-			},
-		];
+	createUser(uid) {
+		return {
+			uid,
+		};
 	}
 	/**
-	 * @returns {express.Handler[]}
+	 * @param {string} uid 
 	 */
-	logout() {
-		return [
-			...this.authMiddleware(),
-			(req, res, next) => {
-				return this.database.auth().then(async auth => {
-					const uid = res.locals.uid;
-					await auth.deleteMany({ uid });
-					userLog('logout uid=%s', uid);
-					res.status(200);
-					res.cookie('uid', '', { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' });
-					res.cookie('token', '', { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' });
-					res.json({}).end();
-				}).catch(next);
-			},
-		];
-	}
-	router() {
-		const router = express.Router();
-		router.post('/login', this.login());
-		router.post('/logout', this.logout());
-		return router;
+	async createUserIfNotExist(uid) {
+		const users = await this.database.users();
+		const user = this.createUser(uid);
+		const result = await users.updateOne({ uid }, { $setOnInsert: user }, { upsert: true });
+		const inserted = result.upsertedCount === 1;
+		if (inserted) {
+			log('new user uid=%s', uid);
+		}
+		return inserted;
 	}
 }

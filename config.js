@@ -4,8 +4,8 @@
 export function config() {
 	return {
 		api: {
-			paint: 'https://www.luogu.com.cn/paintBoard/paint',
-			board: 'https://www.luogu.com.cn/paintBoard/board',
+			paint: 'https://www.luogu.com.cn/paintboard/paint',
+			board: 'https://www.luogu.com.cn/paintboard/board',
 			websocket: 'wss://ws.luogu.com.cn/ws',
 		},
 		board: {},
@@ -14,6 +14,8 @@ export function config() {
 			databaseName: 'paintboard',
 		},
 		userManager: {},
+		authManager: {},
+		tokenManager: {},
 		monitor: {},
 		server: { port: 8001 },
 	};
