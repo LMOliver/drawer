@@ -1,63 +1,267 @@
+import compression from 'compression';
+import debug from 'debug';
 import express from 'express';
-import { UserInputError } from '../ensure/index.js';
-import { AuthManager } from './authManager.js';
-import { Database } from './database.js';
+import { ObjectId } from 'mongodb';
+import { ensure, UserInputError } from '../ensure/index.js';
+import { HEIGHT, WIDTH } from './constants.js';
+import { Drawer } from './drawer.js';
 
-export class ImageManager {
+const log = debug('drawer:task');
+
+/**
+ * @typedef {{width:number,height:number,data:string}} PaintImage
+ */
+const ensurePaintImage = (() => {
+	const ensureImageFormat = ensure({
+		type: 'object',
+		entires: {
+			width: { type: 'integer', min: 1, max: WIDTH },
+			height: { type: 'integer', min: 1, max: HEIGHT },
+			data: { type: 'string', pattern: /^[0-9a-v.]+$/ },
+		}
+	});
 	/**
-	 * @param {{authManager:AuthManager, database:Database}} dependencies 
+	 * @returns {PaintImage}
+	 */
+	return (/** @type {unknown} */ value) => {
+		const { width, height, data } = ensureImageFormat(value);
+		if (data.length !== width * height) {
+			throw new UserInputError('data.length !== width * height');
+		}
+		return { width, height, data };
+	};
+})();
+
+const ensureLeftTopFormat = ensure({
+	type: 'object',
+	entires: {
+		x: { type: 'integer', min: 0, max: WIDTH - 1 },
+		y: { type: 'integer', min: 0, max: HEIGHT - 1 },
+	}
+});
+
+/**
+ * @typedef {{leftTop:{x:number,y:number},weight:number}} TaskOption
+ * @typedef {{image:PaintImage,options:TaskOption}} Task
+ */
+
+const ensureTaskOptionsFormat = ensure({
+	type: 'object',
+	entires: {
+		leftTop: ensureLeftTopFormat,
+		weight: { type: 'real', min: 0, max: 1e300 },
+	}
+});
+
+/**
+ * @param {Task} task 
+ */
+function doCheckValidTask(task) {
+	if (task.options.leftTop.x + task.image.width > WIDTH) {
+		throw new UserInputError('右边界超出绘板范围');
+	}
+	if (task.options.leftTop.y + task.image.height > HEIGHT) {
+		throw new UserInputError('下边界超出绘板范围');
+	}
+}
+
+const ensureTask = (() => {
+	const ensureTaskFormat = ensure({
+		type: 'object',
+		entires: {
+			image: ensurePaintImage,
+			options: ensureTaskOptionsFormat,
+		}
+	});
+	/**
+	 * @returns {Task}
+	 */
+	return (/** @type {unknown} */ value) => {
+		const task = ensureTaskFormat(value);
+		doCheckValidTask(task);
+		return task;
+	};
+})();
+
+const ensureObjectId = (() => {
+	const ensureObjectIdFormat = ensure({ type: 'string', pattern: /^[0-9a-f]{24}$/ });
+	return (/** @type {unknown} */ value) => new ObjectId(ensureObjectIdFormat(value));
+})();
+
+/**
+ * @param {{ width: number; height: number; }} image
+ */
+export function size(image) {
+	return image.width * image.height;
+}
+
+export class TaskManager {
+	/**
+	 * @param {Drawer} dependencies 
 	 * @param {{}} config 
 	 */
-	constructor({ authManager, database }, { }) {
+	constructor({ authManager, userManager, tokenManager, database }, { }) {
 		this.authManager = authManager;
+		this.tokenManager = tokenManager;
+		this.userManager = userManager;
 		this.database = database;
 		/**@type {Set<string>} */
 		this.uploadingUsers = new Set();
 	}
 	/**
+	 * @param {string} owner
+	 * @param {Task} task
+	 */
+	async addTask(owner, task) {
+		const taskSize = size(task.image);
+		const release = await this.userManager.consumeResources(owner, { deltaCount: 1, deltaTotalSize: taskSize });
+		try {
+			const tasks = await this.database.tasks();
+			const id = new ObjectId();
+			await tasks.insertOne({ _id: id, owner, verified: false, ...task });
+			log(
+				'new task owner=%s size=%d*%d leftTop=(%d,%d) weight=%d id=%s',
+				owner,
+				task.image.width,
+				task.image.height,
+				task.options.leftTop.x,
+				task.options.leftTop.y,
+				task.options.weight,
+				id.toString(),
+			);
+			return id;
+		}
+		catch (error) {
+			await release();
+			throw error;
+		}
+	}
+	/**
+	 * @param {ObjectId} id
+	 * @param {string} uid
+	 * @param {TaskOption} options
+	 */
+	async updateTask(id, uid, options) {
+		const tasks = await this.database.tasks();
+		// console.log({
+		// 	_id: id,
+		// 	owner: uid,
+		// 	'image.width': { $lte: WIDTH - options.leftTop.x },
+		// 	'image.height': { $lte: HEIGHT - options.leftTop.y },
+		// });
+		const result = await tasks.updateOne({
+			_id: id,
+			owner: uid,
+			'image.width': { $lte: WIDTH - options.leftTop.x },
+			'image.height': { $lte: HEIGHT - options.leftTop.y },
+		}, { $set: { options } });
+		log(
+			'update task owner=%s leftTop=(%d,%d) weight=%d id=%s',
+			uid,
+			options.leftTop.x,
+			options.leftTop.y,
+			options.weight,
+			id.toString(),
+		);
+		// console.log(result);
+		if (result.matchedCount === 1) {
+			// ok
+			return;
+		}
+		else {
+			throw new UserInputError('该任务已被删除');
+		}
+	}
+	/**
 	 * @returns {express.Handler[]}
 	 */
-	imagesToUpload() {
+	addTaskHandler() {
 		return [
 			...this.authManager.checkAndRequireAuth(),
-			async (req, res, next) => {
-				try {
-					const uid = res.locals.auth.uid;
-					const images = await this.database.images();
-				}
-				catch (error) {
-					next(error);
-				}
+			express.json({ limit: '100kb' }),
+			(req, res, next) => {
+				const { uid } = res.locals.auth;
+				const task = ensureTask(req.body);
+				this.addTask(uid, task)
+					.then(id => {
+						res.status(200).json({ id: id.toString() }).end();
+					})
+					.catch(next);
 			}
 		];
 	}
 	/**
 	 * @returns {express.Handler[]}
 	 */
-	uploadImage() {
+	updateTaskHandler() {
+		const ensureParams = ensure({
+			type: 'object',
+			entires: {
+				id: ensureObjectId,
+			}
+		});
+		const ensureBody = ensure({
+			type: 'object',
+			entires: {
+				options: ensureTaskOptionsFormat,
+			}
+		});
 		return [
 			...this.authManager.checkAndRequireAuth(),
-			express.raw({ type: 'application/octet-stream', limit: '1mb' }),
-			async (req, res, next) => {
-				req.body;
-				const uid = res.locals.auth.uid;
-				try {
-					if (this.uploadingUsers.has(uid)) {
-						throw new UserInputError('不能同时上传多张图像');
-					}
-					try {
-						this.uploadingUsers.add(uid);
-						const tasks = await this.database.tasks();
-						const count = await images.countDocuments({});
-					}
-					finally {
-						this.uploadingUsers.delete(uid);
-					}
-				}
-				catch (error) {
-					next(error);
-				}
+			express.json({ limit: '5kb' }),
+			(req, res, next) => {
+				const { uid } = res.locals.auth;
+				const { id } = ensureParams(req.params);
+				const { options } = ensureBody(req.body);
+				this.updateTask(id, uid, options)
+					.then(() => {
+						res.status(200).end();
+					})
+					.catch(next);
 			}
 		];
+	}
+	/**
+	 * @param {string} owner 
+	 */
+	async getTasks(owner) {
+		const tasks = await this.database.tasks();
+		const cursor = tasks.find({ owner });
+		let list = [];
+		while (true) {
+			const result = await cursor.next();
+			if (result !== null) {
+				const { _id: id, ...data } = result;
+				list.push({ id, ...data });
+			}
+			else {
+				cursor.close();
+				break;
+			}
+		}
+		return list;
+	}
+	/**
+	 * @returns {express.Handler[]}
+	 */
+	getTasksHandler() {
+		return [
+			...this.authManager.checkAndRequireAuth(),
+			compression(),
+			(req, res, next) => {
+				const { uid } = res.locals.auth;
+				this.getTasks(uid)
+					.then(result => {
+						res.status(200).json(result.map(({ id, image, options }) => ({ id, image, options }))).end();
+					})
+					.catch(next);
+			}
+		];
+	}
+	router() {
+		return express.Router()
+			.post('/tasks', this.addTaskHandler())
+			.post('/task/:id', this.updateTaskHandler())
+			.get('/tasks', this.getTasksHandler());
 	}
 }

@@ -9,6 +9,7 @@ export function config() {
 			// websocket: 'ws://10.196.2.7:8000/ws',
 			paint: 'http://localhost:8000/paintBoard/paint',
 			board: 'http://localhost:8000/paintBoard/board',
+			// board: 'https://www.luogu.com.cn/paintboard/board',
 			websocket: 'ws://localhost:8000/ws',
 		},
 		board: {},
@@ -21,7 +22,7 @@ export function config() {
 		tokenManager: {},
 		monitor: {},
 		server: {
-			port: 3000,
+			port: 3456,
 		},
 	};
 }

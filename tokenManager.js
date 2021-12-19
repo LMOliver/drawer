@@ -64,11 +64,35 @@ export class TokenManager extends EventEmitter {
 	 * @param {string} owner
 	 * @param {string} receiver
 	 * @param {TokenStatus} status
+	 * @param {boolean} forceSet
 	 */
-	async addValidToken(token, owner, receiver, status) {
+	async acknowledgeValidToken(token, owner, receiver, status, forceSet = false) {
 		const tokens = await this.database.tokens();
-		log('add token owner=%s receiver=%s status=%s', owner, receiver, status);
-		await tokens.updateOne({ owner }, { $set: { token, owner, receiver, status } }, { upsert: true });
+		log('acknowledge token owner=%s receiver=%s status=%s', owner, receiver, status);
+		try {
+			const { upsertedCount } = await tokens.updateOne(
+				{ owner, ...forceSet ? {} : { token: { $ne: token } } },
+				{ $set: { token, owner, receiver, status } },
+				{ upsert: true }
+			);
+			if (upsertedCount === 1) {
+				log('new uid');
+				return { isNewUser: true };
+			}
+			else {
+				log('new token, old uid');
+				return { newUser: false };
+			}
+		}
+		catch (error) {
+			if (error.code === /* duplicate key error */11000) {
+				log('old token, old uid');
+				return { newUser: false };
+			}
+			else {
+				throw error;
+			}
+		}
 	}
 	/**
 	 * @param {string} owner 
@@ -77,7 +101,7 @@ export class TokenManager extends EventEmitter {
 	async updateToken(owner, receiver) {
 		log('update token owner=%s receiver=%s', owner, receiver);
 		const tokens = await this.database.tokens();
-		await tokens.updateOne({ owner }, { owner, receiver });
+		await tokens.updateOne({ owner }, { $set: { receiver } });
 	}
 	/**
 	 * @param {'owner'|'receiver'} type
@@ -161,6 +185,13 @@ export class TokenManager extends EventEmitter {
 	// 	});
 	// }
 	/**
+	 * @param {string} receiver 
+	 */
+	async countValidTokens(receiver) {
+		const tokens = await this.database.tokens();
+		return tokens.countDocuments({ receiver, status: 'working' });
+	}
+	/**
 	 * @returns {express.Handler[]}
 	 */
 	myTokensHandler() {
@@ -189,15 +220,14 @@ export class TokenManager extends EventEmitter {
 					type: 'union',
 					branches: [
 						ensureToken,
-						{ type: 'constant', value: undefined },
+						{ type: 'constant', value: null },
 					]
 				},
 				receiver: ensureUID,
 			},
 		});
 		const INVALID_COST = 30 * 1000;
-		const ERROR_COST = 15 * 1000;
-		const SUCCESS_COST = 5 * 1000;
+		const SUCCESS_COST = 10 * 1000;
 		const rateLimiter = new RateLimiter(INVALID_COST * 5);
 		return [
 			...this.authManager.checkAndRequireAuth(),
@@ -207,12 +237,16 @@ export class TokenManager extends EventEmitter {
 				try {
 					const { uid } = res.locals.auth;
 					const { token, receiver } = ensureInput(req.body);
-					if (token !== undefined) {
+					if (token !== null) {
 						const result = await this.api.validateToken(token);
 						if (result.ok) {
 							const uid = this.userManager.getUIDByPaintToken(token, result);
-							await this.addValidToken(token, uid, receiver, 'waiting');
-							res.status(200).end();
+							const ackResult = await this.acknowledgeValidToken(token, uid, receiver, 'waiting', true);
+							const { isNewUser } = ackResult;
+							if (!isNewUser) {
+								rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
+							}
+							res.status(200).json({ isNewUser }).end();
 						}
 						else {
 							rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
@@ -224,7 +258,7 @@ export class TokenManager extends EventEmitter {
 					}
 				}
 				catch (error) {
-					rateLimiter.add(rateLimiter.key(req, res), ERROR_COST - SUCCESS_COST);
+					rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
 					next(error);
 				}
 			},

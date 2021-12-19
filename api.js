@@ -42,13 +42,12 @@ export class API {
 					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
 					'Pragma': 'no-cache',
 					'Cache-Control': 'no-cache',
-					'Cookie': `_uid=${uid}; __client_id=${clientID}`,
 					'Referrer': 'https://www.luogu.com.cn/paintBoard',
 				},
-				body: `x=${-1}&y=${-1}&color=${-1}`,
+				body: `x=${-1}&y=${-1}&color=${-1}&uid=${uid}&token=${clientID}`,
 			});
 			if (!resp.ok) {
-				throw Object.assign(new Error(`${resp.status} ${resp.statusText}`), { status: resp.status, data: resp.statusText });
+				return { ok: false, reason: `${resp.status} ${resp.statusText}` };
 			}
 			const result = /**@type {{status:number,data:string}}*/(await resp.json());
 			const { status, data } = result;
@@ -79,10 +78,9 @@ export class API {
 					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
 					'Pragma': 'no-cache',
 					'Cache-Control': 'no-cache',
-					'Cookie': `_uid=${uid}; __client_id=${clientID}`,
 					'Referrer': 'https://www.luogu.com.cn/paintBoard',
 				},
-				body: `x=${x}&y=${y}&color=${color}`,
+				body: `x=${x}&y=${y}&color=${color}&uid=${uid}&token=${clientID}`,
 			});
 			if (!resp.ok) {
 				throw Object.assign(new Error(`${resp.status} ${resp.statusText}`), { status: resp.status, data: resp.statusText });
@@ -112,12 +110,14 @@ export class API {
 			if (!resp.ok) {
 				throw Object.assign(new Error(`bad http status ${resp.status}`), { status: resp.status });
 			}
-			const buffer = await resp.buffer();
+			const arrayBuffer = await resp.arrayBuffer();
+			const buffer = Buffer.from(arrayBuffer);
 			const height = buffer.indexOf('\n'.charCodeAt(0));
 			if (height === -1) {
 				throw new Error('incorrect board data');
 			}
-			const width = buffer.length / (height + 1);
+			// console.log(height, buffer.length);
+			const width = (buffer.length + (buffer[buffer.length - 1] === '\n'.charCodeAt(0) ? 0 : 1)) / (height + 1);
 			if (!Number.isSafeInteger(width)) {
 				throw new Error('incorrect board data');
 			}

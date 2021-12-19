@@ -2,6 +2,8 @@ import debug from 'debug';
 import express from 'express';
 import compression from 'compression';
 import { Board } from './board.js';
+import { rateLimiter } from './rateLimiter.js';
+import { Drawer } from './drawer.js';
 
 const log = debug('drawer:monitor');
 
@@ -13,29 +15,31 @@ const log = debug('drawer:monitor');
 
 export class Monitor {
 	/**
-	 * @param {{board:Board}} dependencies
+	 * @param {Drawer} drawer
 	 * @param {MonitorConfig} config
 	 */
-	constructor({ board }, { }) {
+	constructor({ authManager, board }, { }) {
+		this.authManager = authManager;
 		this.board = board;
 	}
-	createRouter() {
+	router() {
 		const router = express.Router();
-		router.get('/status', (req, res, next) => {
-			res.json({
-				board: this.board.readyState,
-			});
-		});
+		// router.get('/status', (req, res, next) => {
+		// 	res.json({
+		// 		board: this.board.readyState,
+		// 	});
+		// });
 		router.get('/board', [
+			...this.authManager.checkAndRequireAuth(),
+			rateLimiter(30 * 1000, 5),
 			/**@type {express.Handler} */(compression({ level: 1, filter: () => true })),
 			/**@type {express.Handler} */
 			(req, res, next) => {
-				// TODO: add frequency limits
 				this.board.initialize()
 					.then(() => {
-						const { height, width, data } = this.board.state;
+						const { width, height, data } = this.board.state;
 						res.setHeader('Content-Type', 'application/octet-stream');
-						res.write(Buffer.from(Uint32Array.from([height, width]).buffer));
+						res.write(Buffer.from(Uint32Array.from([width, height]).buffer));
 						res.write(data);
 						res.end();
 					})

@@ -2,6 +2,7 @@ import debug from 'debug';
 import express from 'express';
 import { UserInputError } from '../ensure';
 import { AuthManager } from './authManager.js';
+import { Drawer } from './drawer.js';
 import { Monitor } from './monitor.js';
 import { rateLimiter } from './rateLimiter.js';
 import { TokenManager } from './tokenManager.js';
@@ -16,14 +17,15 @@ const log = debug('drawer:server');
  */
 export class Server {
 	/**
-	 * @param {{monitor:Monitor,userManager:UserManager,authManager:AuthManager,tokenManager:TokenManager}} dependencies
+	 * @param {Drawer} drawer
 	 * @param {ServerConfig} config
 	 */
-	constructor({ monitor, userManager, authManager, tokenManager }, { port }) {
+	constructor({ monitor, userManager, authManager, tokenManager, taskManager }, { port }) {
 		this.monitor = monitor;
 		this.userManager = userManager;
 		this.authManager = authManager;
 		this.tokenManager = tokenManager;
+		this.taskManager = taskManager;
 
 		this.port = port;
 		this.app = this.createApp();
@@ -41,6 +43,8 @@ export class Server {
 				.use('/auth', this.authManager.router())
 				.use('/drawer',
 					this.tokenManager.router(),
+					this.taskManager.router(),
+					this.monitor.router(),
 				)
 		]);
 		app.use([

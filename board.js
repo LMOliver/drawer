@@ -5,6 +5,7 @@ import { COLORS } from './constants.js';
 import { Database } from './database.js';
 import { ensure } from '../ensure';
 import { showColor, showTime } from './log.js';
+import { Drawer } from './drawer.js';
 
 const log = debug('drawer:board');
 const updateLog = debug('drawer:board:update');
@@ -27,7 +28,7 @@ export class Board extends EventEmitter {
 	/**@readonly */
 	static OPEN = 'open';
 	/**
-	 * @param {{api:API,database:Database}} dependencies
+	 * @param {Drawer} drawer
 	 * @param {{}} config
 	 */
 	constructor({ api, database }, { }) {

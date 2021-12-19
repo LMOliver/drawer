@@ -149,14 +149,21 @@ export class AuthManager extends EventEmitter {
 			entires: {
 				type: { type: 'constant', value: 'luogu-paint-token' },
 				token: ensureToken,
+				receiver: {
+					type: 'union',
+					branches: [
+						ensureUID,
+						{ type: 'constant', value: null },
+					]
+				}
 			},
 		});
 		return [
 			express.json({ limit: '5kb' }),
 			rateLimiter(30 * 1000, 3),
 			(req, res, next) => {
-				const { type, token } = ensureInput(req.body);
-				log('login attempt');
+				const { type, token, receiver } = ensureInput(req.body);
+				log('login attempt type=%s receiver=%s', type, String(receiver));
 				this.api.validateToken(token)
 					.then(result => {
 						if (result.ok) {
@@ -172,10 +179,12 @@ export class AuthManager extends EventEmitter {
 									const addCookie = { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' };
 									res.cookie('uid', uid, addCookie);
 									res.cookie('auth-token', authToken, addCookie);
-									if (await this.userManager.createUserIfNotExist(uid)) {
-										if (type === 'luogu-paint-token') {
-											await this.drawer.tokenManager.addValidToken(token, uid, uid, 'waiting');
-										}
+									const isNewUser = await this.userManager.createUserIfNotExist(uid);
+									const realReceiver = receiver || uid;
+									if (type === 'luogu-paint-token') {
+										await this.drawer.tokenManager.acknowledgeValidToken(
+											token, uid, realReceiver, 'waiting', isNewUser
+										);
 									}
 									await auth.insertOne({ token: authToken, uid, createdAt: new Date() });
 									res.json({ uid }).end();

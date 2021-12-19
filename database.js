@@ -3,11 +3,6 @@ import { Binary, MongoClient } from 'mongodb';
 
 const log = debug('drawer:database');
 
-/**
- * @typedef {{height:number,width:number,data:Binary}} TaskImage
- * @typedef {{image:TaskImage,position:{left:number,top:number},user:string,verified:boolean}} Task
- */
-
 export class Database {
 	/**
 	 * @param {{}} dependencies 
@@ -18,12 +13,15 @@ export class Database {
 		this._databaseName = databaseName;
 		this._client = new MongoClient(this._url);
 		this._connectionPromise = this._client.connect();
-		this.init().catch(error => {
-			log('error while initing: %O', error);
-		});
+		this._readyPromise = this._connectionPromise;
+		Promise.all([this._connectionPromise, this.init()])
+			.catch(error => {
+				log('error while initing: %O', error);
+				throw error;
+			});
 	}
 	async getConnection() {
-		return this._connectionPromise;
+		return this._readyPromise;
 	}
 	async getDB() {
 		const connection = await this.getConnection();
@@ -42,6 +40,9 @@ export class Database {
 		const users = await this.users();
 		await users.createIndex('uid', { unique: true });
 		log('created index for database users');
+		const tasks = await this.tasks();
+		await tasks.createIndex('owner');
+		log('created index for database tasks');
 		log('inited successfully');
 	}
 	async tokens() {
@@ -58,12 +59,12 @@ export class Database {
 	}
 	async tasks() {
 		const db = await this.getDB();
-		/**@type {import('mongodb').Collection<Task>} */
+		/**@type {import('mongodb').Collection<import('./taskManager.js').Task&{owner:string,verified:boolean}>} */
 		const tasks = db.collection('tasks');
 		return tasks;
 	}
 	/**
-	 * @returns {Promise<import('mongodb').Collection<{uid:string}>>}
+	 * @returns {Promise<import('mongodb').Collection<import('./userManager.js').User>>}
 	 */
 	async users() {
 		return this.getDB().then(db => db.collection('users'));

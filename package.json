@@ -20,7 +20,6 @@
 	"author": "LMOliver",
 	"license": "Apache-2.0",
 	"dependencies": {
-		"@vitejs/plugin-vue": "^1.9.4",
 		"chalk": "^4.1.2",
 		"compression": "^1.7.4",
 		"cookie-parser": "^1.4.6",
@@ -28,8 +27,6 @@
 		"express": "^4.17.1",
 		"mongodb": "^4.2.1",
 		"node-fetch": "^3.0.0",
-		"vite": "^2.6.13",
-		"vue": "^3.2.20",
 		"ws": "^8.3.0"
 	},
 	"devDependencies": {

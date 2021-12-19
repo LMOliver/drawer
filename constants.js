@@ -1,3 +1,6 @@
+export const WIDTH = 1000;
+export const HEIGHT = 600;
+export const COOLDOWN = 30 * 1000;
 export const COLORS = [
 	[0, 0, 0], [255, 255, 255], [170, 170, 170], [85, 85, 85],
 	[254, 211, 199], [255, 196, 206], [250, 172, 142], [255, 139, 131],

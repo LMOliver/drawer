@@ -17,6 +17,6 @@ export function config() {
 		authManager: {},
 		tokenManager: {},
 		monitor: {},
-		server: { port: 8001 },
+		server: { port: 3456 },
 	};
 }
