@@ -4,7 +4,7 @@ import { API } from './api.js';
 import { COLORS } from './constants.js';
 import { Database } from './database.js';
 import { ensure } from '../ensure';
-import { showColor, showTime } from './log.js';
+import { formatPos, showColor, showTime } from './log.js';
 import { Drawer } from './drawer.js';
 
 const log = debug('drawer:board');
@@ -94,7 +94,7 @@ export class Board extends EventEmitter {
 					}
 				})(event);
 				stateSet(state, x, y, color);
-				updateLog('[%s] (%s,%s) %s', showTime(time), x.toString().padStart(3, ' '), y.toString().padStart(3, ' '), showColor(color));
+				updateLog('[%s] %s %s', showTime(time), formatPos({x,y}), showColor(color));
 				this._database.paints().then(
 					collection => collection.insertOne({
 						time: new Date(time), x, y, color

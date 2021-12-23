@@ -1,13 +1,20 @@
+// TODO: refactor
+
 import debug from 'debug';
 import EventEmitter from 'events';
 import express from 'express';
+import { ObjectId } from 'mongodb';
 import { ensure } from '../ensure/index.js';
-import { ensureToken, ensureUID } from './authManager.js';
+import { ensureUID } from './authManager.js';
 import { Drawer } from './drawer.js';
 import { RateLimiter, rateLimiter } from './rateLimiter.js';
 
 const log = debug('drawer:token');
 
+const ensureToken = ensure({
+	type: 'string',
+	pattern: /^[0-9a-z]{40}$/,
+});
 /**
  * @typedef {'working'|'waiting'|'busy'|'invalid'} TokenStatus
  */
@@ -23,13 +30,13 @@ export class TokenManager extends EventEmitter {
 		this.authManager = authManager;
 		this.userManager = userManager;
 	}
-	/**
-	 * @param {string} type 
-	 * @param {string} uid 
-	 */
-	eventKey(type, uid) {
-		return `${type}:${uid}`;
-	}
+	// /**
+	//  * @param {string} type 
+	//  * @param {string} uid 
+	//  */
+	// eventKey(type, uid) {
+	// 	return `${type}:${uid}`;
+	// }
 	// /**
 	//  * @param {string} uid 
 	//  * @param {import('ws').WebSocket} client 
@@ -60,60 +67,63 @@ export class TokenManager extends EventEmitter {
 	// 	};
 	// }
 	/**
+	 * @param {ObjectId} id
+	 * @param {TokenStatus} status
+	 */
+	async acknowledgeTokenStatus(id, status) {
+		const tokens = await this.database.tokens();
+		const result = await tokens.updateOne({ _id: id }, { $set: { status } });
+		return { exists: result.matchedCount === 1 };
+	}
+	/**
 	 * @param {import('./api.js').PaintToken} token
-	 * @param {string} owner
+	 * @param {string|null} remark
 	 * @param {string} receiver
 	 * @param {TokenStatus} status
-	 * @param {boolean} forceSet
 	 */
-	async acknowledgeValidToken(token, owner, receiver, status, forceSet = false) {
+	async addToken(token, remark, receiver, status) {
 		const tokens = await this.database.tokens();
-		log('acknowledge token owner=%s receiver=%s status=%s', owner, receiver, status);
+		log('addToken %s remark=%s receiver=%s status=%s', token.slice(-6), String(remark), receiver, status);
 		try {
-			const { upsertedCount } = await tokens.updateOne(
-				{ owner, ...forceSet ? {} : { token: { $ne: token } } },
-				{ $set: { token, owner, receiver, status } },
-				{ upsert: true }
-			);
-			if (upsertedCount === 1) {
-				log('new uid');
-				return { isNewUser: true };
-			}
-			else {
-				log('new token, old uid');
-				return { newUser: false };
-			}
+			await tokens.insertOne({ token, remark, receiver, status });
+			log('new token');
+			this.emit('add', token, receiver);
+			return { isNewToken: true };
 		}
 		catch (error) {
 			if (error.code === /* duplicate key error */11000) {
-				log('old token, old uid');
-				return { newUser: false };
+				return { isNewToken: false };
 			}
 			else {
 				throw error;
 			}
 		}
 	}
-	/**
-	 * @param {string} owner 
-	 * @param {string} receiver 
-	 */
-	async updateToken(owner, receiver) {
-		log('update token owner=%s receiver=%s', owner, receiver);
+	async allUsableTokens() {
 		const tokens = await this.database.tokens();
-		await tokens.updateOne({ owner }, { $set: { receiver } });
+		const cursor = tokens.find({ status: { $in: ['busy', 'waiting', 'working'] } });
+		let items = [];
+		while (true) {
+			const item = await cursor.next();
+			if (item) {
+				items.push(item);
+			}
+			else {
+				break;
+			}
+		}
+		return items;
 	}
 	/**
-	 * @param {'owner'|'receiver'} type
 	 * @param {string} uid 
 	 */
-	async currentTokens(type, uid) {
+	async currentTokens(uid) {
 		const tokens = await this.database.tokens();
-		const cursor = tokens.find({ [type]: uid });
+		const cursor = tokens.find({ receiver: uid });
 		/**
 		 @type {import('mongodb').WithId<{
 			token:import('./api.js').PaintToken;
-			owner:string;
+			remark:string|null;
 			receiver:string;
 			status:string;
 		}>[]}
@@ -131,59 +141,6 @@ export class TokenManager extends EventEmitter {
 		}
 		return items;
 	}
-	// /**
-	//  * @param {import('http').Server | import('https').Server} server
-	//  * @param {string} path
-	//  */
-	// makeTokenWSS(server, path) {
-	// 	const wsServer = new Server({ noServer: true, path });
-	// 	server.on('upgrade', async (req, /**@type {import('net').Socket}*/socket, head) => {
-	// 		try {
-	// 			if (wsServer.shouldHandle(req)) {
-	// 				const authState = await this.authManager.getAuthState(req);
-	// 				if (authState === null) {
-	// 					throw new UserInputError('not logined');
-	// 				}
-	// 				const { uid } = authState;
-	// 				wsServer.handleUpgrade(req, socket, head, client => {
-	// 					this.currentTokens(uid)
-	// 						.then(items => {
-	// 							if (client.readyState !== client.OPEN) {
-	// 								throw new Error('client is already closed');
-	// 							}
-	// 							client.send({
-	// 								type: 'set',
-	// 								statuses: items.map(item => ({
-	// 									uid: item.uid,
-	// 									status: item.status,
-	// 								}))
-	// 							});
-	// 							const cancel = this.authManager.onLogout(uid, () => {
-	// 								client.close();
-	// 							});
-	// 							const cancel2 = this.registerEvents(uid, client);
-	// 							client.once('close', () => {
-	// 								cancel();
-	// 								cancel2();
-	// 							});
-	// 						})
-	// 						.catch(error => {
-	// 							log('error while connecting: %O', error);
-	// 							if (client.readyState < client.CLOSING) {
-	// 								client.close();
-	// 							}
-	// 						});
-	// 				});
-	// 			}
-	// 		}
-	// 		catch (error) {
-	// 			if (!(error instanceof UserInputError)) {
-	// 				log('error while connecting: %O', error);
-	// 			}
-	// 			socket.destroy();
-	// 		}
-	// 	});
-	// }
 	/**
 	 * @param {string} receiver 
 	 */
@@ -194,67 +151,42 @@ export class TokenManager extends EventEmitter {
 	/**
 	 * @returns {express.Handler[]}
 	 */
-	myTokensHandler() {
-		return [
-			...this.authManager.checkAndRequireAuth(),
-			express.json({ limit: '5kb' }),
-			(req, res, next) => {
-				const { uid } = res.locals.auth;
-				this.currentTokens('owner', uid)
-					.then(tokens => {
-						const result = tokens.map(x => ({ owner: x.owner, receiver: x.receiver, status: x.status }));
-						res.json(result).end();
-					})
-					.catch(next);
-			},
-		];
-	}
-	/**
-	 * @returns {express.Handler[]}
-	 */
-	uploadOrUpdateTokenHandler() {
+	uploadTokenHandler() {
 		const ensureInput = ensure({
 			type: 'object',
 			entires: {
-				token: {
+				token: ensureToken,
+				receiver: ensureUID,
+				remark: {
 					type: 'union',
 					branches: [
-						ensureToken,
+						ensureUID,
 						{ type: 'constant', value: null },
 					]
-				},
-				receiver: ensureUID,
+				}
 			},
 		});
 		const INVALID_COST = 30 * 1000;
 		const SUCCESS_COST = 10 * 1000;
-		const rateLimiter = new RateLimiter(INVALID_COST * 5);
+		const rateLimiter = new RateLimiter(INVALID_COST * 3);
 		return [
-			...this.authManager.checkAndRequireAuth(),
+			new RateLimiter(2000).handler(1000),
 			rateLimiter.handler(SUCCESS_COST),
 			express.json({ limit: '5kb' }),
 			async (req, res, next) => {
 				try {
-					const { uid } = res.locals.auth;
-					const { token, receiver } = ensureInput(req.body);
-					if (token !== null) {
-						const result = await this.api.validateToken(token);
-						if (result.ok) {
-							const uid = this.userManager.getUIDByPaintToken(token, result);
-							const ackResult = await this.acknowledgeValidToken(token, uid, receiver, 'waiting', true);
-							const { isNewUser } = ackResult;
-							if (!isNewUser) {
-								rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
-							}
-							res.status(200).json({ isNewUser }).end();
-						}
-						else {
+					const { token, receiver, remark } = ensureInput(req.body);
+					const result = await this.api.validateToken(token);
+					if (result.ok) {
+						const { isNewToken } = await this.addToken(token, remark, receiver, 'waiting');
+						if (!isNewToken) {
 							rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
-							res.status(401).send(result.reason).end();
 						}
+						res.status(200).json({ isNewToken }).end();
 					}
 					else {
-						await this.updateToken(uid, receiver);
+						rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
+						res.status(401).send(result.reason).end();
 					}
 				}
 				catch (error) {
@@ -273,9 +205,9 @@ export class TokenManager extends EventEmitter {
 			express.json({ limit: '5kb' }),
 			(req, res, next) => {
 				const { uid } = res.locals.auth;
-				this.currentTokens('receiver', uid)
+				this.currentTokens(uid)
 					.then(tokens => {
-						const result = tokens.map(x => ({ owner: x.owner, receiver: x.receiver, status: x.status }));
+						const result = tokens.map(x => ({ remark: x.remark, status: x.status }));
 						res.json(result).end();
 					})
 					.catch(next);
@@ -284,8 +216,7 @@ export class TokenManager extends EventEmitter {
 	}
 	router() {
 		return express.Router()
-			.get('/myTokens', this.myTokensHandler())
-			.get('/tokensForMe', this.tokensForMeHandler())
-			.post('/tokens', this.uploadOrUpdateTokenHandler());
+			.get('/tokens', this.tokensForMeHandler())
+			.post('/tokens', this.uploadTokenHandler());
 	}
 }

@@ -1,3 +1,5 @@
+// TODO: update
+
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import debug from 'debug';
@@ -10,6 +12,7 @@ import { UserManager } from './userManager.js';
 import { rateLimiter } from './rateLimiter.js';
 import EventEmitter from 'events';
 import { Drawer } from './drawer.js';
+import { luoguVerify } from './luoguVerify.js';
 
 const log = debug('drawer:auth');
 
@@ -20,14 +23,7 @@ const log = debug('drawer:auth');
  */
 
 export const ensureUID = ensure({ type: 'string', pattern: /^[1-9]\d{0,7}@Luogu$/ });
-const ensureLuoguUID = ensure({ type: 'string', pattern: /^[1-9]\d{0,7}$/ });
-export const ensureToken = ensure({
-	type: 'object',
-	entires: {
-		uid: ensureLuoguUID,
-		clientID: { type: 'string', pattern: /^[0-9a-z]{40}$/ },
-	}
-});
+
 const ensureCookies = ensure({ type: 'string', pattern: /^(?:|(?:[^=; ]+=[^=; ]*(?:; |$))*)$/ });
 /**
  * @param {string} rawCookies
@@ -63,30 +59,12 @@ export class AuthManager extends EventEmitter {
 		this.userManager = userManager;
 	}
 	/**
-	 * @param {string} uid 
-	 */
-	logoutEventName(uid) {
-		return `logout:${uid}`;
-	}
-	/**
-	 * @param {string} uid 
-	 * @param {()=>void} callback 
-	 */
-	onLogout(uid, callback) {
-		this.on(this.logoutEventName(uid), callback);
-		return () => {
-			this.removeListener(this.logoutEventName(uid), callback);
-		};
-	}
-	/**
 	 * @param {import('http').IncomingMessage} req 
-	 * @returns {Promise<{uid:string}|null>}
+	 * @returns {Promise<{uid:string,name:string}|null>}
 	 */
-	async getAuthState(req) {
+	async getUser(req) {
 		try {
-			// console.log(req.headers.cookie);
 			const cookies = parseCookies(ensureCookies(req.headers.cookie));
-			// console.log(cookies);
 			const { uid, 'auth-token': authToken } = ensureAuthInput(cookies);
 			const auth = await this.database.auth();
 			const document = await auth.findOne({ token: authToken });
@@ -94,12 +72,16 @@ export class AuthManager extends EventEmitter {
 				return null;
 			}
 			else {
+				const users = await this.database.users();
+				const user = await users.findOne({ uid });
+				if (user === null) {
+					return null;
+				}
 				// TODO: update auth table
-				return { uid };
+				return { uid: user.uid, name: user.name };
 			}
 		}
 		catch (error) {
-			// console.log(error);
 			if (error instanceof UserInputError) {
 				return null;
 			}
@@ -115,7 +97,7 @@ export class AuthManager extends EventEmitter {
 		return [
 			// /**@type {import('express').Handler}*/(cookieParser()),
 			(req, res, next) => {
-				this.getAuthState(req)
+				this.getUser(req)
 					.then(result => {
 						res.locals.auth = result;
 						next();
@@ -143,67 +125,30 @@ export class AuthManager extends EventEmitter {
 	/**
 	 * @returns {express.Handler[]}
 	 */
-	registerOrLoginWithToken() {
-		const ensureInput = ensure({
-			type: 'object',
-			entires: {
-				type: { type: 'constant', value: 'luogu-paint-token' },
-				token: ensureToken,
-				receiver: {
-					type: 'union',
-					branches: [
-						ensureUID,
-						{ type: 'constant', value: null },
-					]
-				}
-			},
-		});
+	registerOrLoginWithLuogu() {
 		return [
 			express.json({ limit: '5kb' }),
-			rateLimiter(30 * 1000, 3),
+			rateLimiter(5000, 2),
+			rateLimiter(30 * 1000, 4),
+			...luoguVerify(),
 			(req, res, next) => {
-				const { type, token, receiver } = ensureInput(req.body);
-				log('login attempt type=%s receiver=%s', type, String(receiver));
-				this.api.validateToken(token)
-					.then(result => {
-						if (result.ok) {
-							const uid = this.userManager.getUIDByPaintToken(token, result);
-							log('login attempt success: uid=%s', result.uid);
-							return this.database.auth()
-								.then(async auth => {
-									const authToken = crypto.randomUUID();
-									res.status(200);
-									/**
-									 * @type {import('express').CookieOptions}
-									 */
-									const addCookie = { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' };
-									res.cookie('uid', uid, addCookie);
-									res.cookie('auth-token', authToken, addCookie);
-									const isNewUser = await this.userManager.createUserIfNotExist(uid);
-									const realReceiver = receiver || uid;
-									if (type === 'luogu-paint-token') {
-										await this.drawer.tokenManager.acknowledgeValidToken(
-											token, uid, realReceiver, 'waiting', isNewUser
-										);
-									}
-									await auth.insertOne({ token: authToken, uid, createdAt: new Date() });
-									res.json({ uid }).end();
-								});
-						}
-						else {
-							log('login attempt failed: %s', result.reason);
-							res.status(401);
-							/**
-							 * @type {import('express').CookieOptions}
-							 */
-							const removeCookie = { httpOnly: true, secure: true, path: '/api', sameSite: 'strict', expires: new Date(0) };
-							res.cookie('uid', '', removeCookie);
-							res.cookie('auth-token', '', removeCookie);
-							res.send(result.reason).end();
-						}
+				const { uid, name } = res.locals.verifyResult;
+				return this.database.auth()
+					.then(async auth => {
+						const authToken = crypto.randomUUID();
+						res.status(200);
+						/**
+						 * @type {import('express').CookieOptions}
+						 */
+						const addCookie = { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' };
+						res.cookie('uid', uid, addCookie);
+						res.cookie('auth-token', authToken, addCookie);
+						await this.userManager.createUserIfNotExist({ uid, name });
+						await auth.insertOne({ token: authToken, uid, createdAt: new Date() });
+						res.json({ uid, name }).end();
 					})
 					.catch(next);
-			},
+			}
 		];
 	}
 	/**
@@ -216,7 +161,7 @@ export class AuthManager extends EventEmitter {
 				return this.database.auth().then(async auth => {
 					const uid = res.locals.auth.uid;
 					await auth.deleteMany({ uid });
-					this.emit(this.logoutEventName(uid));
+					// this.emit(this.logoutEventName(uid));
 					log('logout uid=%s', uid);
 					res.status(200);
 					/**
@@ -237,16 +182,16 @@ export class AuthManager extends EventEmitter {
 		return [
 			...this.checkAuth(),
 			(req, res) => {
-				const result = res.locals.auth && { uid: res.locals.auth.uid };
+				const result = res.locals.auth && { uid: res.locals.auth.uid, name: res.locals.auth.name };
 				res.json(result).end();
 			},
 		];
 	}
 	router() {
 		const router = express.Router();
-		router.post('/token', this.registerOrLoginWithToken());
-		router.post('/logout', this.logout());
-		router.get('/state', this.state());
+		router.post('/', this.registerOrLoginWithLuogu());
+		router.delete('/', this.logout());
+		router.get('/', this.state());
 		return router;
 	}
 }

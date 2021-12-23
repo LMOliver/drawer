@@ -11,7 +11,7 @@ export class Database {
 	constructor({ }, { url, databaseName }) {
 		this._url = url;
 		this._databaseName = databaseName;
-		this._client = new MongoClient(this._url);
+		this._client = new MongoClient(this._url, { keepAlive: true });
 		this._connectionPromise = this._client.connect();
 		this._readyPromise = this._connectionPromise;
 		Promise.all([this._connectionPromise, this.init()])
@@ -33,8 +33,7 @@ export class Database {
 		await auth.createIndex('createdAt', { expireAfterSeconds: 5 * 86400 });
 		log('created index for database auth');
 		const tokens = await this.tokens();
-		await tokens.createIndex('owner', { unique: true });
-		// await tokens.createIndex('token', { unique: true });
+		await tokens.createIndex('token', { unique: true });
 		await tokens.createIndex('receiver');
 		log('created index for database tokens');
 		const users = await this.users();
@@ -47,7 +46,7 @@ export class Database {
 	}
 	async tokens() {
 		const db = await this.getDB();
-		/**@type {import('mongodb').Collection<{token:import('./api.js').PaintToken,owner:string,receiver:string,status:import('./tokenManager.js').TokenStatus}>} */
+		/**@type {import('mongodb').Collection<{token:import('./api.js').PaintToken,remark:string|null,receiver:string,status:import('./tokenManager.js').TokenStatus}>} */
 		const auth = db.collection('tokens');
 		return auth;
 	}

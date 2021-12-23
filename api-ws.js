@@ -10,6 +10,7 @@ async function join(ws) {
 	const joinMessage = JSON.stringify({ type: 'join_channel', channel: 'paintboard', channel_param: '' });
 	ws.send(joinMessage);
 	/**@type {[data: import('ws').RawData, isBinary: boolean]} */
+	// @ts-ignore
 	const joinResp = (await Promise.race([
 		once(ws, 'message'),
 		once(ws, 'close').then(event => {

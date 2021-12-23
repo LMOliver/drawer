@@ -4,6 +4,13 @@ import { COLORS } from './constants.js';
 const RENDERS = COLORS.map(([r, g, b]) => (r + g + b < 128 ? chalk.white : chalk.black).bgRgb(r, g, b));
 
 /**
+ * @param {{x:number,y:number}} param0 
+ */
+export function formatPos({ x, y }) {
+	return `(${x.toString(10).padStart(3, ' ')},${y.toString(10).padStart(3, ' ')})`;
+}
+
+/**
  * @param {number} color
  */
 export function colorRenderer(color) {
@@ -26,5 +33,5 @@ export function showTime(time) {
 	 * @param {number} x 
 	 */
 	const qwq = x => x.toString().padStart(2, '0');
-	return `${date.getFullYear()}/${date.getMonth()+1}/${date.getDay()} ${qwq(date.getHours())}:${qwq(date.getMinutes())}:${qwq(date.getSeconds())}.${qwq(Math.floor(date.getMilliseconds() / 10))}`;
+	return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${qwq(date.getHours())}:${qwq(date.getMinutes())}:${qwq(date.getSeconds())}.${qwq(Math.floor(date.getMilliseconds() / 10))}`;
 }

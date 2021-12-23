@@ -39,9 +39,12 @@ export class Server {
 				next();
 			},
 			rateLimiter(0.3 * 1000, 50),
+			rateLimiter(1 * 1000, 100),
+			rateLimiter(10 * 1000, 1000),
 			express.Router()
-				.use('/auth', this.authManager.router())
 				.use('/drawer',
+					express.Router()
+						.use('/auth', this.authManager.router()),
 					this.tokenManager.router(),
 					this.taskManager.router(),
 					this.monitor.router(),

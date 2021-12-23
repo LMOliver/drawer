@@ -1,11 +1,13 @@
+// TODO: update
+
 import debug from 'debug';
 import fetch from 'node-fetch';
 import { PaintboardWS } from './api-ws.js';
-import { showColor } from './log.js';
+import { formatPos, showColor } from './log.js';
 /**
  * @typedef {import('../api/api.js').PaintToken} PaintToken
  * @typedef {{x:number,y:number,color:number}} Paint
- * @typedef {{data:Buffer,height:number,width:number}} BoardState
+ * @typedef {{data:Buffer,width:number,height:number}} BoardState
 @typedef {Readonly<{
 	board: string;
 	paint: string;
@@ -16,9 +18,12 @@ import { showColor } from './log.js';
 const validationLog = debug('drawer:api:validate');
 const paintLog = debug('drawer:api:paint');
 const boardLog = debug('drawer:api:board');
+
 /**
+ * @typedef {'network-error'|'server-error'|'rate-limited'|'bad-request'|'invalid-token'|'cooldowning'|'success'} PaintResultType
+ * @typedef {{type:PaintResultType,code:number,message:string}} PaintResult
  * @typedef {APIURLs} APIConfig
- * @typedef {{uid:string}} SuccessfulTokenValidationResult
+ * @typedef {{}} SuccessfulTokenValidationResult
  */
 export class API {
 	/**
@@ -33,18 +38,18 @@ export class API {
 	 * @param {PaintToken} token 
 	 * @return {Promise<({ok:true}&SuccessfulTokenValidationResult)|{ok:false,reason:string}>}
 	 */
-	async validateToken({ uid, clientID }) {
+	async validateToken(token) {
 		try {
-			validationLog('validate uid=%s', uid);
+			validationLog('validate token');
 			const resp = await fetch(this.urls.paint, {
-				method: "POST",
+				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
 					'Pragma': 'no-cache',
 					'Cache-Control': 'no-cache',
-					'Referrer': 'https://www.luogu.com.cn/paintBoard',
+					'Referrer': 'https://www.luogu.com.cn/paintboard',
 				},
-				body: `x=${-1}&y=${-1}&color=${-1}&uid=${uid}&token=${clientID}`,
+				body: `x=${-1}&y=${-1}&color=${-1}&token=${token}`,
 			});
 			if (!resp.ok) {
 				return { ok: false, reason: `${resp.status} ${resp.statusText}` };
@@ -52,53 +57,97 @@ export class API {
 			const result = /**@type {{status:number,data:string}}*/(await resp.json());
 			const { status, data } = result;
 			if (status === 401) {
-				validationLog('validate uid=%s failed: %s', uid, data);
+				validationLog('validation failed: %s', data);
 				return { ok: false, reason: data === '没有登录' ? '身份无效' : data };
 			}
 			else {
-				validationLog('validate uid=%s successful', uid);
-				return { ok: true, uid };
+				validationLog('validation successed');
+				return { ok: true };
 			}
 		} catch (error) {
-			validationLog('validate uid=%s %O', uid, error);
+			validationLog('validation errored: %O', error);
 			throw error;
 		}
 	}
 	/**
-	 * @param {PaintToken} param1
+	 * @param {PaintToken} token
 	 * @param {Paint} param2 
-	 * @returns {Promise<{status:number,data:string}>}
+	 * @returns {Promise<PaintResult>}
 	 */
-	async paint({ uid, clientID }, { x, y, color }) {
-		paintLog('paint uid=%d (%d,%d) %s', uid, x, y, showColor(color));
+	async _paint(token, { x, y, color }) {
+		/**
+		 * @param {number} status
+		 * @returns {PaintResultType}
+		 */
+		function typeOfCode(status) {
+			if (status >= 200 && status < 300) {
+				return 'success';
+			}
+			else if (status === /** Too Many Requests */429) {
+				return 'cooldowning';
+			}
+			else if (status === 401) {
+				return 'invalid-token';
+			}
+			else if (status >= 400 && status < 500) {
+				return 'bad-request';
+			}
+			else if (status === /** Service Unavailable */503) {
+				return 'rate-limited';
+			}
+			else if (status >= 500 && status < 600) {
+				return 'server-error';
+			}
+			else {
+				return 'network-error';
+			}
+		}
 		try {
 			const resp = await fetch(this.urls.paint, {
-				method: "POST",
+				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
 					'Pragma': 'no-cache',
 					'Cache-Control': 'no-cache',
-					'Referrer': 'https://www.luogu.com.cn/paintBoard',
+					'Referrer': 'https://www.luogu.com.cn/paintboard',
 				},
-				body: `x=${x}&y=${y}&color=${color}&uid=${uid}&token=${clientID}`,
+				body: `x=${x}&y=${y}&color=${color}&token=${token}`,
 			});
-			if (!resp.ok) {
-				throw Object.assign(new Error(`${resp.status} ${resp.statusText}`), { status: resp.status, data: resp.statusText });
-			}
-
-			const result =/** @type {{status:number,data:string}}*/(await resp.json());
-			const { status, data } = result;
-			if (status >= 200 && status < 300) {
-				return { status, data };
+			if (resp.ok) {
+				try {
+					const { status, message } =/**@type {any}*/(await resp.json());
+					return {
+						type: typeOfCode(status),
+						code: status,
+						message: message || '',
+					};
+				}
+				catch (error) {
+					return { type: 'network-error', code: -1, message: error.message };
+				}
 			}
 			else {
-				throw Object.assign(new Error(data), result);
+				return {
+					type: typeOfCode(resp.status),
+					code: resp.status,
+					message: resp.statusText,
+				};
 			}
-		} catch (error) {
-			paintLog('paint %d (%d,%d) %s failed: %o', uid, x, y, showColor(color), error);
-			throw error;
 		}
-	};
+		catch (error) {
+			return { type: 'network-error', code: -1, message: error.message };
+		}
+	}
+	/**
+	 * @param {PaintToken} token
+	 * @param {{ x: number; y: number; color: number; }} paint
+	 */
+	async paint(token, paint) {
+		paintLog('paint %s %s suffix=%s', formatPos(paint), showColor(paint.color), token.slice(-6));
+		const result = await this._paint(token, paint);
+		paintLog('paint %s %s %s %d %s', formatPos(paint), showColor(paint.color), result.type, result.code, result.message);
+		return result;
+	}
 
 	/**
 	 * @returns {Promise<BoardState>}

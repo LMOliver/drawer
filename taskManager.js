@@ -2,6 +2,7 @@ import compression from 'compression';
 import debug from 'debug';
 import express from 'express';
 import { ObjectId } from 'mongodb';
+import { EventEmitter } from 'events';
 import { ensure, UserInputError } from '../ensure/index.js';
 import { HEIGHT, WIDTH } from './constants.js';
 import { Drawer } from './drawer.js';
@@ -49,7 +50,7 @@ const ensureTaskOptionsFormat = ensure({
 	type: 'object',
 	entires: {
 		leftTop: ensureLeftTopFormat,
-		weight: { type: 'real', min: 0, max: 1e300 },
+		weight: { type: 'real', min: 0, max: 1e290 },
 	}
 });
 
@@ -95,12 +96,13 @@ export function size(image) {
 	return image.width * image.height;
 }
 
-export class TaskManager {
+export class TaskManager extends EventEmitter {
 	/**
 	 * @param {Drawer} dependencies 
 	 * @param {{}} config 
 	 */
 	constructor({ authManager, userManager, tokenManager, database }, { }) {
+		super();
 		this.authManager = authManager;
 		this.tokenManager = tokenManager;
 		this.userManager = userManager;
@@ -127,8 +129,9 @@ export class TaskManager {
 				task.options.leftTop.x,
 				task.options.leftTop.y,
 				task.options.weight,
-				id.toString(),
+				id.toHexString(),
 			);
+			this.emit('add', id);
 			return id;
 		}
 		catch (error) {
@@ -161,12 +164,45 @@ export class TaskManager {
 			options.leftTop.x,
 			options.leftTop.y,
 			options.weight,
-			id.toString(),
+			id.toHexString(),
 		);
 		// console.log(result);
 		if (result.matchedCount === 1) {
 			// ok
+			log('updated successfully, %s', result.modifiedCount > 0 ? 'changed' : 'unchanged');
+			if (result.modifiedCount > 0) {
+				this.emit('update', id);
+			}
 			return;
+		}
+		else {
+			throw new UserInputError('该任务已被删除');
+		}
+	}
+	/**
+	 * @param {ObjectId} id
+	 * @param {string} uid
+	 */
+	async deleteTask(id, uid) {
+		const tasks = await this.database.tasks();
+		// console.log({
+		// 	_id: id,
+		// 	owner: uid,
+		// 	'image.width': { $lte: WIDTH - options.leftTop.x },
+		// 	'image.height': { $lte: HEIGHT - options.leftTop.y },
+		// });
+		const result = await tasks.deleteOne({
+			_id: id,
+			owner: uid,
+		});
+		log(
+			'delete task owner=%s id=%s',
+			uid,
+			id.toHexString(),
+		);
+		if (result.deletedCount === 1) {
+			log('deleted successfully');
+			this.emit('delete', id);
 		}
 		else {
 			throw new UserInputError('该任务已被删除');
@@ -184,7 +220,7 @@ export class TaskManager {
 				const task = ensureTask(req.body);
 				this.addTask(uid, task)
 					.then(id => {
-						res.status(200).json({ id: id.toString() }).end();
+						res.status(200).json({ id: id.toHexString() }).end();
 					})
 					.catch(next);
 			}
@@ -222,6 +258,29 @@ export class TaskManager {
 		];
 	}
 	/**
+	 * @returns {express.Handler[]}
+	 */
+	deleteTaskHandler() {
+		const ensureParams = ensure({
+			type: 'object',
+			entires: {
+				id: ensureObjectId,
+			}
+		});
+		return [
+			...this.authManager.checkAndRequireAuth(),
+			(req, res, next) => {
+				const { uid } = res.locals.auth;
+				const { id } = ensureParams(req.params);
+				this.deleteTask(id, uid)
+					.then(() => {
+						res.status(200).end();
+					})
+					.catch(next);
+			}
+		];
+	}
+	/**
 	 * @param {string} owner 
 	 */
 	async getTasks(owner) {
@@ -241,6 +300,20 @@ export class TaskManager {
 		}
 		return list;
 	}
+	async* getAllTasks() {
+		const tasks = await this.database.tasks();
+		const cursor = tasks.find({});
+		while (true) {
+			const result = await cursor.next();
+			if (result !== null) {
+				yield result;
+			}
+			else {
+				cursor.close();
+				break;
+			}
+		}
+	}
 	/**
 	 * @returns {express.Handler[]}
 	 */
@@ -252,7 +325,9 @@ export class TaskManager {
 				const { uid } = res.locals.auth;
 				this.getTasks(uid)
 					.then(result => {
-						res.status(200).json(result.map(({ id, image, options }) => ({ id, image, options }))).end();
+						res.status(200).json(result.map(
+							({ id, image, options }) => ({ id: id.toHexString(), image, options }))
+						).end();
 					})
 					.catch(next);
 			}
@@ -262,6 +337,7 @@ export class TaskManager {
 		return express.Router()
 			.post('/tasks', this.addTaskHandler())
 			.post('/task/:id', this.updateTaskHandler())
+			.delete('/task/:id', this.deleteTaskHandler())
 			.get('/tasks', this.getTasksHandler());
 	}
 }

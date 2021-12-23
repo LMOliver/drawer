@@ -16,6 +16,8 @@ export function config() {
 		userManager: {},
 		authManager: {},
 		tokenManager: {},
+		taskManager: {},
+		executer: {},
 		monitor: {},
 		server: { port: 3456 },
 	};

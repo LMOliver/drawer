@@ -7,7 +7,7 @@ import { TokenManager } from './tokenManager.js';
 const log = debug('drawer:user');
 
 /**
- * @typedef {{uid:string,taskCount:number,taskTotalSize:number}} User
+ * @typedef {{uid:string,name:string,taskCount:number,taskTotalSize:number}} User
  */
 
 /**
@@ -25,20 +25,13 @@ export class UserManager {
 		this.database = this.drawer.database;
 	}
 	/**
-	 * @param {import('./api.js').PaintToken} _token
-	 * @param {import('./api.js').SuccessfulTokenValidationResult} result
-	 */
-	getUIDByPaintToken(_token, result) {
-		return `${result.uid}@Luogu`;
-	}
-	/**
 	 * @param {string} uid 
 	 */
 	async getLimits(uid) {
 		const tokenCount = await this.drawer.tokenManager.countValidTokens(uid);
 		return {
-			taskCount: Math.ceil(tokenCount / 3),
-			taskTotalSize: tokenCount * 1000
+			taskCount: Math.floor(tokenCount / 2) + 1,
+			taskTotalSize: (tokenCount + 1) * 1000,
 		};
 	}
 	/**
@@ -64,26 +57,27 @@ export class UserManager {
 			};
 		}
 		else {
-			throw new UserInputError('任务总数或总大小超出限制');
+			throw new UserInputError('任务总数或总大小超出限制，请先提交更多 token');
 		}
 	}
 	/**
-	 * @param {string} uid 
+	 * @param {{uid:string,name:string}} a
 	 * @returns {User}
 	 */
-	createUser(uid) {
+	createUser({ uid, name }) {
 		return {
 			uid,
+			name,
 			taskCount: 0,
 			taskTotalSize: 0,
 		};
 	}
 	/**
-	 * @param {string} uid 
+	 * @param {{uid:string,name:string}} a
 	 */
-	async createUserIfNotExist(uid) {
+	async createUserIfNotExist({ uid, name }) {
 		const users = await this.database.users();
-		const user = this.createUser(uid);
+		const user = this.createUser({ uid, name });
 		const result = await users.updateOne({ uid }, { $setOnInsert: user }, { upsert: true });
 		const inserted = result.upsertedCount === 1;
 		if (inserted) {
