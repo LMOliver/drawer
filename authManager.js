@@ -1,14 +1,9 @@
 // TODO: update
 
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import debug from 'debug';
-import { Database } from './database.js';
-import { ensure, UserInputError } from '../ensure';
-import { API } from './api.js';
+import { ensure, UserInputError, ensureUUID } from './ensure/index.js';
 import crypto from 'crypto';
-import { ensureUUID } from '../utils/index.js';
-import { UserManager } from './userManager.js';
 import { rateLimiter } from './rateLimiter.js';
 import EventEmitter from 'events';
 import { Drawer } from './drawer.js';
@@ -129,7 +124,7 @@ export class AuthManager extends EventEmitter {
 		return [
 			express.json({ limit: '5kb' }),
 			rateLimiter(5000, 2),
-			rateLimiter(30 * 1000, 4),
+			rateLimiter(30 * 1000, 5),
 			...luoguVerify(),
 			(req, res, next) => {
 				const { uid, name } = res.locals.verifyResult;
@@ -189,9 +184,9 @@ export class AuthManager extends EventEmitter {
 	}
 	router() {
 		const router = express.Router();
-		router.post('/', this.registerOrLoginWithLuogu());
-		router.delete('/', this.logout());
-		router.get('/', this.state());
+		router.post('/auth', this.registerOrLoginWithLuogu());
+		router.delete('/auth', this.logout());
+		router.get('/auth', this.state());
 		return router;
 	}
 }

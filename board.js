@@ -1,9 +1,7 @@
 import debug from 'debug';
 import EventEmitter, { once } from 'events';
-import { API } from './api.js';
 import { COLORS } from './constants.js';
-import { Database } from './database.js';
-import { ensure } from '../ensure';
+import { ensure } from './ensure/index.js';
 import { formatPos, showColor, showTime } from './log.js';
 import { Drawer } from './drawer.js';
 

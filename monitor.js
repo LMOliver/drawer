@@ -32,7 +32,7 @@ export class Monitor {
 		router.get('/board', [
 			...this.authManager.checkAndRequireAuth(),
 			rateLimiter(30 * 1000, 5),
-			/**@type {express.Handler} */(compression({ level: 1, filter: () => true })),
+			// /**@type {express.Handler} */(compression({ level: 1, filter: () => true })),
 			/**@type {express.Handler} */
 			(req, res, next) => {
 				this.board.initialize()

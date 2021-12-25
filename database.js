@@ -1,5 +1,5 @@
 import debug from 'debug';
-import { Binary, MongoClient } from 'mongodb';
+import { MongoClient } from 'mongodb';
 
 const log = debug('drawer:database');
 

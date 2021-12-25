@@ -1,11 +1,9 @@
-// TODO: update
-
 import debug from 'debug';
 import fetch from 'node-fetch';
 import { PaintboardWS } from './api-ws.js';
 import { formatPos, showColor } from './log.js';
 /**
- * @typedef {import('../api/api.js').PaintToken} PaintToken
+ * @typedef {string} PaintToken
  * @typedef {{x:number,y:number,color:number}} Paint
  * @typedef {{data:Buffer,width:number,height:number}} BoardState
 @typedef {Readonly<{
@@ -143,9 +141,10 @@ export class API {
 	 * @param {{ x: number; y: number; color: number; }} paint
 	 */
 	async paint(token, paint) {
-		paintLog('paint %s %s suffix=%s', formatPos(paint), showColor(paint.color), token.slice(-6));
+		// paintLog('paint %s %s %s', formatPos(paint), showColor(paint.color), token.slice(-6));
 		const result = await this._paint(token, paint);
-		paintLog('paint %s %s %s %d %s', formatPos(paint), showColor(paint.color), result.type, result.code, result.message);
+		paintLog('%s %s %s', token.slice(-6), formatPos(paint), showColor(paint.color));
+		paintLog('%s %d %s', result.type, result.code, result.message);
 		return result;
 	}
 

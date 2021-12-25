@@ -3,7 +3,7 @@ import debug from 'debug';
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import { EventEmitter } from 'events';
-import { ensure, UserInputError } from '../ensure/index.js';
+import { ensure, UserInputError } from './ensure/index.js';
 import { HEIGHT, WIDTH } from './constants.js';
 import { Drawer } from './drawer.js';
 
@@ -191,7 +191,7 @@ export class TaskManager extends EventEmitter {
 		// 	'image.width': { $lte: WIDTH - options.leftTop.x },
 		// 	'image.height': { $lte: HEIGHT - options.leftTop.y },
 		// });
-		const result = await tasks.deleteOne({
+		const result = await tasks.findOneAndDelete({
 			_id: id,
 			owner: uid,
 		});
@@ -200,8 +200,9 @@ export class TaskManager extends EventEmitter {
 			uid,
 			id.toHexString(),
 		);
-		if (result.deletedCount === 1) {
+		if (result.value !== null) {
 			log('deleted successfully');
+			await this.userManager.consumeResources(uid, { deltaCount: -1, deltaTotalSize: -size(result.value.image) });
 			this.emit('delete', id);
 		}
 		else {

@@ -2,10 +2,9 @@ import { Drawer } from './drawer.js';
 import { promisify } from 'util';
 import { RandomSet } from './randomSet.js';
 import debug from 'debug';
-import { COLORS, COOLDOWN, HEIGHT } from './constants.js';
+import { COLORS, COOLDOWN, WIDTH, HEIGHT } from './constants.js';
 import { Board } from './board.js';
 import EventEmitter, { once } from 'events';
-import { WIDTH } from '../drawer-client/constants.js';
 import { ObjectId } from 'mongodb';
 import { formatPos, showColor } from './log.js';
 
@@ -268,7 +267,7 @@ export class Executer {
 		let candidates = [];
 		for (const [id, task] of taskMap) {
 			if ((task.verified || task.owner === tokenReceiver) && task.working && task.find(filter) !== undefined) {
-				console.log(id, task._positionsToCheck.size, task.weight);
+				// console.log(id, task._positionsToCheck.size, task.weight);
 				const weight = task.weight;
 				if (weight > 0) {
 					candidates.push({ id, task, weight });
@@ -380,6 +379,7 @@ class ExecuterToken {
 		/**@type {import('./tokenManager.js').TokenStatus|null} */
 		this._status = null;
 		this.busies = 0;
+		this.lims = 0;
 
 		this._run();
 	}
@@ -393,18 +393,24 @@ class ExecuterToken {
 			tokens.updateOne({ token: this.token }, { $set: { status } });
 		}
 	}
+	idleWait() {
+		return wait(Math.random() * COOLDOWN);
+	}
 	async _run() {
+		await this.idleWait();
 		while (true) {
 			try {
 				await this.executer.drawer.board.initialize();
 			}
-			catch (_) { }
+			catch (_) {
+				await wait(COOLDOWN * Math.random() * 4);
+			}
 			const paint = this.executer.findTargetForUser(this.receiver);
 			if (paint !== null) {
-				log('suffix=%s uid=%s target=%s %s', this.token.slice(-6), this.receiver, formatPos(paint), showColor(paint.color));
+				log('%s uid=%s target=%s %s', this.token.slice(-6), this.receiver, formatPos(paint), showColor(paint.color));
 			}
 			else {
-				log('suffix=%s uid=%s no target', this.token.slice(-6), this.receiver);
+				log('%s uid=%s no target', this.token.slice(-6), this.receiver);
 			}
 			if (paint !== null) {
 				const release = this.executer.reserve(paint);
@@ -413,13 +419,15 @@ class ExecuterToken {
 				switch (result.type) {
 					case 'success': {
 						this.busies = 0;
+						this.lims = 0;
 						this.setStatus('working');
 						await wait(COOLDOWN);
 						break;
 					}
 					case 'network-error':
 					case 'rate-limited': {
-						await wait(100);
+						this.lims++;
+						await wait(Math.min(this.lims, Math.random() * 10) * COOLDOWN);
 						break;
 					}
 					case 'server-error':
@@ -448,7 +456,7 @@ class ExecuterToken {
 				}
 			}
 			else {
-				await wait(Math.random() * COOLDOWN);
+				await this.idleWait();
 			}
 		}
 	}

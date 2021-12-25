@@ -1,13 +1,11 @@
-// TODO: refactor
-
 import debug from 'debug';
 import EventEmitter from 'events';
 import express from 'express';
 import { ObjectId } from 'mongodb';
-import { ensure } from '../ensure/index.js';
+import { ensure } from './ensure/index.js';
 import { ensureUID } from './authManager.js';
 import { Drawer } from './drawer.js';
-import { RateLimiter, rateLimiter } from './rateLimiter.js';
+import { RateLimiter } from './rateLimiter.js';
 
 const log = debug('drawer:token');
 
@@ -30,42 +28,6 @@ export class TokenManager extends EventEmitter {
 		this.authManager = authManager;
 		this.userManager = userManager;
 	}
-	// /**
-	//  * @param {string} type 
-	//  * @param {string} uid 
-	//  */
-	// eventKey(type, uid) {
-	// 	return `${type}:${uid}`;
-	// }
-	// /**
-	//  * @param {string} uid 
-	//  * @param {import('ws').WebSocket} client 
-	//  */
-	// registerEvents(uid, client) {
-	// 	const listenerAdd = ({ _id, uid, status }) => {
-	// 		if (client.readyState === client.OPEN) {
-	// 			client.send(JSON.stringify({ type: 'add', id: _id, uid, status }));
-	// 		}
-	// 	};
-	// 	this.on(this.eventKey('add', uid), listenerAdd);
-	// 	const listenerUpdate = ({ _id, uid, status }) => {
-	// 		if (client.readyState === client.OPEN) {
-	// 			client.send(JSON.stringify({ type: 'update', id: _id, uid, status }));
-	// 		}
-	// 	};
-	// 	this.on(this.eventKey('update', uid), listenerUpdate);
-	// 	const listenerDelete = (_id) => {
-	// 		if (client.readyState === client.OPEN) {
-	// 			client.send(JSON.stringify({ type: 'delete', id: _id }));
-	// 		}
-	// 	};
-	// 	this.on(this.eventKey('delete', uid), listenerDelete);
-	// 	return () => {
-	// 		this.removeListener(this.eventKey('add', uid), listenerAdd);
-	// 		this.removeListener(this.eventKey('update', uid), listenerUpdate);
-	// 		this.removeListener(this.eventKey('delete', uid), listenerDelete);
-	// 	};
-	// }
 	/**
 	 * @param {ObjectId} id
 	 * @param {TokenStatus} status
@@ -167,7 +129,7 @@ export class TokenManager extends EventEmitter {
 			},
 		});
 		const INVALID_COST = 30 * 1000;
-		const SUCCESS_COST = 10 * 1000;
+		const SUCCESS_COST = 5 * 1000;
 		const rateLimiter = new RateLimiter(INVALID_COST * 3);
 		return [
 			new RateLimiter(2000).handler(1000),

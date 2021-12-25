@@ -1,0 +1,9 @@
+{
+	"name": "ensure",
+	"version": "0.0.0",
+	"description": "",
+	"main": "index.js",
+	"type": "module",
+	"author": "LMOliver",
+	"license": "AGPL-3.0"
+}

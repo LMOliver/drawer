@@ -5,13 +5,9 @@
 	"main": "index.js",
 	"type": "module",
 	"scripts": {
-		"start": "node --experimental-specifier-resolution=node index.js",
-		"dev": "DEBUG=drawer:* node --experimental-specifier-resolution=node dev/index.js",
+		"start": "node index.js",
+		"dev": "DEBUG=drawer:* node dev/index.js",
 		"test": "echo \"Error: no test specified\" && exit 1"
-	},
-	"repository": {
-		"type": "git",
-		"url": "ssh://xjoi@10.196.2.7:2222/~/paintboard/drawer.git"
 	},
 	"keywords": [
 		"paintboard",
@@ -33,5 +29,13 @@
 		"@types/debug": "^4.1.7",
 		"@types/express": "^4.17.13",
 		"@types/ws": "^8.2.0"
-	}
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/LMOliver/drawer.git"
+	},
+	"bugs": {
+		"url": "https://github.com/LMOliver/drawer/issues"
+	},
+	"homepage": "https://github.com/LMOliver/drawer#readme"
 }

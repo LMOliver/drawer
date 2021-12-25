@@ -1,5 +1,5 @@
 import express from 'express';
-import { ensure, UserInputError } from '../ensure';
+import { ensure, UserInputError } from './ensure/index.js';
 import { createHash } from 'crypto';
 import fetch from 'node-fetch';
 import debug from 'debug';
