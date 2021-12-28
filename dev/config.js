@@ -17,13 +17,18 @@ export function config() {
 			databaseName: 'paintboard-dev',
 		},
 		userManager: {},
-		authManager: {},
+		authManager: {
+			admins: new Set([
+				'25512@Luogu'
+			]),
+		},
 		tokenManager: {},
 		taskManager: {},
 		executer: {},
 		monitor: {},
 		server: {
 			port: 3456,
+			trustProxy: true,
 		},
 	};
 }

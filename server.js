@@ -9,6 +9,7 @@ const log = debug('drawer:server');
 /**
 @typedef {{
 	port:number;
+	trustProxy:boolean;
 }} ServerConfig
  */
 export class Server {
@@ -16,7 +17,7 @@ export class Server {
 	 * @param {Drawer} drawer
 	 * @param {ServerConfig} config
 	 */
-	constructor({ monitor, userManager, authManager, tokenManager, taskManager }, { port }) {
+	constructor({ monitor, userManager, authManager, tokenManager, taskManager }, { port, trustProxy }) {
 		this.monitor = monitor;
 		this.userManager = userManager;
 		this.authManager = authManager;
@@ -24,10 +25,12 @@ export class Server {
 		this.taskManager = taskManager;
 
 		this.port = port;
+		this.trustProxy = trustProxy;
 		this.app = this.createApp();
 	}
 	createApp() {
 		const app = express();
+		app.set('trust proxy', this.trustProxy);
 		app.use('/api', [
 			/**@type {express.Handler} */
 			(req, res, next) => {

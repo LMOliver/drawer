@@ -18,6 +18,34 @@ const paintLog = debug('drawer:api:paint');
 const boardLog = debug('drawer:api:board');
 
 /**
+ * @param {number} status
+ * @returns {PaintResultType}
+ */
+function typeOfCode(status) {
+	if (status >= 200 && status < 300) {
+		return 'success';
+	}
+	else if (status === 500 || status === /** Too Many Requests */429) {
+		return 'cooldowning';
+	}
+	else if (status === 401) {
+		return 'invalid-token';
+	}
+	else if (status >= 400 && status < 500) {
+		return 'bad-request';
+	}
+	else if (status === /** Service Unavailable */503) {
+		return 'rate-limited';
+	}
+	else if (status >= 500 && status < 600) {
+		return 'server-error';
+	}
+	else {
+		return 'network-error';
+	}
+}
+
+/**
  * @typedef {'network-error'|'server-error'|'rate-limited'|'bad-request'|'invalid-token'|'cooldowning'|'success'} PaintResultType
  * @typedef {{type:PaintResultType,code:number,message:string}} PaintResult
  * @typedef {APIURLs} APIConfig
@@ -37,34 +65,20 @@ export class API {
 	 * @return {Promise<({ok:true}&SuccessfulTokenValidationResult)|{ok:false,reason:string}>}
 	 */
 	async validateToken(token) {
-		try {
-			validationLog('validate token');
-			const resp = await fetch(this.urls.paint, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-					'Pragma': 'no-cache',
-					'Cache-Control': 'no-cache',
-					'Referrer': 'https://www.luogu.com.cn/paintboard',
-				},
-				body: `x=${-1}&y=${-1}&color=${-1}&token=${token}`,
-			});
-			if (!resp.ok) {
-				return { ok: false, reason: `${resp.status} ${resp.statusText}` };
-			}
-			const result = /**@type {{status:number,data:string}}*/(await resp.json());
-			const { status, data } = result;
-			if (status === 401) {
-				validationLog('validation failed: %s', data);
-				return { ok: false, reason: data === '没有登录' ? '身份无效' : data };
-			}
-			else {
-				validationLog('validation successed');
-				return { ok: true };
-			}
-		} catch (error) {
-			validationLog('validation errored: %O', error);
-			throw error;
+		validationLog('validate token');
+		const result = await this._paint(token, { x: -1, y: -1, color: -1 });
+		if (result.type === 'bad-request' || result.type === 'cooldowning') {
+			validationLog('validation successed');
+			return { ok: true };
+		}
+		else if (result.type === 'invalid-token') {
+			const message = result.message;
+			validationLog('validation failed');
+			return { ok: false, reason: message === '没有登录' ? 'token 无效' : message };
+		}
+		else {
+			validationLog('validation errored');
+			throw new Error(result.message);
 		}
 	}
 	/**
@@ -73,33 +87,6 @@ export class API {
 	 * @returns {Promise<PaintResult>}
 	 */
 	async _paint(token, { x, y, color }) {
-		/**
-		 * @param {number} status
-		 * @returns {PaintResultType}
-		 */
-		function typeOfCode(status) {
-			if (status >= 200 && status < 300) {
-				return 'success';
-			}
-			else if (status === /** Too Many Requests */429) {
-				return 'cooldowning';
-			}
-			else if (status === 401) {
-				return 'invalid-token';
-			}
-			else if (status >= 400 && status < 500) {
-				return 'bad-request';
-			}
-			else if (status === /** Service Unavailable */503) {
-				return 'rate-limited';
-			}
-			else if (status >= 500 && status < 600) {
-				return 'server-error';
-			}
-			else {
-				return 'network-error';
-			}
-		}
 		try {
 			const resp = await fetch(this.urls.paint, {
 				method: 'POST',
@@ -152,50 +139,44 @@ export class API {
 	 * @returns {Promise<BoardState>}
 	 */
 	async getBoardState() {
-		try {
-			boardLog('loading');
-			const resp = await fetch(this.urls.board);
-			if (!resp.ok) {
-				throw Object.assign(new Error(`bad http status ${resp.status}`), { status: resp.status });
-			}
-			const arrayBuffer = await resp.arrayBuffer();
-			const buffer = Buffer.from(arrayBuffer);
-			const height = buffer.indexOf('\n'.charCodeAt(0));
-			if (height === -1) {
-				throw new Error('incorrect board data');
-			}
-			// console.log(height, buffer.length);
-			const width = (buffer.length + (buffer[buffer.length - 1] === '\n'.charCodeAt(0) ? 0 : 1)) / (height + 1);
-			if (!Number.isSafeInteger(width)) {
-				throw new Error('incorrect board data');
-			}
-			// console.time('decode');
-			const size = height * width;
-			let data = Buffer.allocUnsafe(size);
-			const lineWidth = height + 1;
-			for (let x = 0; x < width; x++) {
-				buffer.copy(data, x * height, x * lineWidth, x * lineWidth + height);
-			}
-
-			function createDecodeTable() {
-				let qwq = new Uint8Array(256);
-				for (let i = 0; i < 36; i++) {
-					qwq[i.toString(36).charCodeAt(0)] = i;
-				}
-				return qwq;
-			}
-			const decodeTable = createDecodeTable();
-			for (let i = 0; i < size; i++) {
-				data[i] = decodeTable[data[i]];
-			}
-
-			boardLog('loaded');
-			return { data, height, width };
+		boardLog('loading');
+		const resp = await fetch(this.urls.board);
+		if (!resp.ok) {
+			throw Object.assign(new Error(`bad http status ${resp.status}`), { status: resp.status });
 		}
-		catch (error) {
-			boardLog('%O', error);
-			throw error;
+		const arrayBuffer = await resp.arrayBuffer();
+		const buffer = Buffer.from(arrayBuffer);
+		const height = buffer.indexOf('\n'.charCodeAt(0));
+		if (height === -1) {
+			throw new Error('incorrect board data');
 		}
+		// console.log(height, buffer.length);
+		const width = (buffer.length + (buffer[buffer.length - 1] === '\n'.charCodeAt(0) ? 0 : 1)) / (height + 1);
+		if (!Number.isSafeInteger(width)) {
+			throw new Error('incorrect board data');
+		}
+		// console.time('decode');
+		const size = height * width;
+		let data = Buffer.allocUnsafe(size);
+		const lineWidth = height + 1;
+		for (let x = 0; x < width; x++) {
+			buffer.copy(data, x * height, x * lineWidth, x * lineWidth + height);
+		}
+
+		function createDecodeTable() {
+			let qwq = new Uint8Array(256);
+			for (let i = 0; i < 36; i++) {
+				qwq[i.toString(36).charCodeAt(0)] = i;
+			}
+			return qwq;
+		}
+		const decodeTable = createDecodeTable();
+		for (let i = 0; i < size; i++) {
+			data[i] = decodeTable[data[i]];
+		}
+
+		boardLog('loaded');
+		return { data, height, width };
 	}
 	createWS() {
 		return new PaintboardWS(this.urls.websocket);

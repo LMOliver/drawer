@@ -14,11 +14,16 @@ export function config() {
 			databaseName: 'paintboard',
 		},
 		userManager: {},
-		authManager: {},
+		authManager: {
+			admins: new Set(),
+		},
 		tokenManager: {},
 		taskManager: {},
 		executer: {},
 		monitor: {},
-		server: { port: 3456 },
+		server: {
+			port: 3456,
+			trustProxy: true,
+		},
 	};
 }

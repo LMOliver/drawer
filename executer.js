@@ -41,6 +41,11 @@ function decodeImage({ height, width, data }) {
 
 const unpackPos = (/** @type {number} */ pos) => ({ x: pos >>> 16, y: pos & ((1 << 16) - 1) });
 
+/**
+ * @param {import("./taskManager.js").Task&{owner:string,verified:boolean}} param0 
+ */
+const meta = ({ image, ...others }) => JSON.stringify(others);
+
 class ExecuterTask extends EventEmitter {
 	/**
 	 * @param {import("./taskManager.js").Task&{owner:string,verified:boolean}} task
@@ -48,6 +53,8 @@ class ExecuterTask extends EventEmitter {
 	 */
 	constructor(task, board) {
 		super();
+		this.meta = meta(task);
+
 		this.x = task.options.leftTop.x;
 		this.y = task.options.leftTop.y;
 		this.image = decodeImage(task.image);
@@ -183,6 +190,7 @@ class ExecuterTask extends EventEmitter {
 	}
 }
 
+const wait = promisify(setTimeout);
 export class Executer {
 	/**
 	 * @param {Drawer} drawer
@@ -201,7 +209,14 @@ export class Executer {
 		@type {Map<string,Map<string,ExecuterTask>>}
 		 */
 		this.taskListsForUsers = new Map();
+
+		this.tokenMap = new Map();
+		this.tokenCountForUsers = new Map();
+
 		this.isPending = new Uint8Array(WIDTH * HEIGHT).fill(0);
+		/**@type {(()=>void)[]} */
+		this.executionPool = [];
+		this.readyForRequest = true;
 
 		this.initializationPromise = this._run();
 	}
@@ -240,10 +255,19 @@ export class Executer {
 	 * @param {import('./taskManager.js').Task&{owner:string;verified:boolean}} task
 	 */
 	updateOrAdd(id, task) {
-		if (this.taskMap.has(id)) {
-			this._delete(id);
+		const executer = this.taskMap.get(id);
+		if (executer) {
+			if (executer.meta !== meta(task)) {
+				this._delete(id);
+				this._add(id, task);
+			}
+			else {
+				return;
+			}
 		}
-		this._add(id, task);
+		else {
+			this._add(id, task);
+		}
 	}
 	/**
 	 * @param {string} id
@@ -268,7 +292,7 @@ export class Executer {
 		for (const [id, task] of taskMap) {
 			if ((task.verified || task.owner === tokenReceiver) && task.working && task.find(filter) !== undefined) {
 				// console.log(id, task._positionsToCheck.size, task.weight);
-				const weight = task.weight;
+				const weight = task.weight * (this.tokenCountForUsers.get(task.owner) || 0);
 				if (weight > 0) {
 					candidates.push({ id, task, weight });
 					weightSumsOfUsers.set(task.owner, (weightSumsOfUsers.get(task.owner) || 0) + weight);
@@ -276,8 +300,7 @@ export class Executer {
 			};
 		}
 		for (let item of candidates) {
-			// TODO consider cookies
-			item.weight /= /**@type {Number}*/(weightSumsOfUsers.get(item.task.owner));
+			item.weight /= /**@type {number}*/(weightSumsOfUsers.get(item.task.owner));
 		}
 		const sumWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
 		if (sumWeight === 0) {
@@ -319,11 +342,7 @@ export class Executer {
 	}
 	async _run() {
 		this.drawer.board.setMaxListeners(Infinity);
-		for await (const { _id: id, ...task } of this.drawer.taskManager.getAllTasks()) {
-			this.updateOrAdd(id.toHexString(), task);
-		}
-		const listener = (/** @type {ObjectId} */ id) => {
-			// console.log('update', id.toHexString());
+		const checkTask = (/** @type {ObjectId} */ id) => {
 			this.drawer.database.tasks()
 				.then(d => d.findOne({ _id: id }))
 				.then(task => {
@@ -336,16 +355,51 @@ export class Executer {
 					}
 				});
 		};
-		this.drawer.taskManager.on('add', listener);
-		this.drawer.taskManager.on('update', listener);
-		this.drawer.taskManager.on('delete', listener);
+		this.drawer.taskManager.on('add', checkTask);
+		this.drawer.taskManager.on('update', checkTask);
+		this.drawer.taskManager.on('delete', checkTask);
 
-		for (const { token, receiver } of await this.drawer.tokenManager.allUsableTokens()) {
-			this.startTokenLoop(token, receiver);
-		}
-		this.drawer.tokenManager.on('add', (token, receiver) => {
-			this.startTokenLoop(token, receiver);
+		const checkToken = (/** @type {import('./api.js').PaintToken} */ token) => {
+			this.drawer.database.tokens()
+				.then(d => d.findOne({ token }))
+				.then(result => {
+					if (result && result.status !== 'invalid') {
+						this.addOrUpdateToken(token, result.receiver);
+					}
+					else {
+						this.removeToken(token);
+					}
+				});
+		};
+		this.drawer.tokenManager.on('add', (token, _receiver) => {
+			checkToken(token);
 		});
+
+		const qwq = async () => {
+			log('update');
+			const taskIDs = new Set([
+				...(await this.drawer.taskManager.getAllTaskIDs()).map(x => x._id.toHexString()),
+				...this.taskMap.keys()
+			]);
+			for (const id of taskIDs) {
+				checkTask(new ObjectId(id));
+			}
+
+			const tokens = new Set([
+				...(await this.drawer.tokenManager.allTokens()).map(x => x.token),
+				...this.tokenMap.keys()
+			]);
+			for (const token of tokens) {
+				checkToken(token);
+			}
+		};
+
+		await qwq();
+		setInterval(qwq, 30 * 1000);
+
+		setInterval(() => {
+			this.putRequest();
+		}, 100);
 	}
 	/**
 	 * @param {{x:number,y:number}} param0 
@@ -357,22 +411,78 @@ export class Executer {
 		return () => { this.isPending[index] = 0; };
 	}
 	/**
-	 * @param {import('./api.js').PaintToken} token
+	 * @param {import('./api.js').PaintToken&string} token
 	 * @param {string} receiver
 	 */
-	async startTokenLoop(token, receiver) {
-		new ExecuterToken(token, receiver, this);
+	addOrUpdateToken(token, receiver) {
+		let executer = this.tokenMap.get(token);
+		if (executer && executer.receiver !== receiver) {
+			executer = undefined;
+			this.removeToken(token);
+		}
+		if (!executer) {
+			log('token %s added', token.slice(-6));
+			const executer = new ExecuterToken(token, receiver, this);
+			this.tokenMap.set(token, executer);
+			this.tokenCountForUsers.set(receiver, (this.tokenCountForUsers.get(receiver) || 0) + 1);
+			executer.once('destroyed', () => {
+				this.removeToken(token);
+			});
+		}
+	}
+	/**
+	 * @param {import('./api.js').PaintToken&string} token
+	 */
+	removeToken(token) {
+		const executer = this.tokenMap.get(token);
+		if (executer) {
+			log('token %s removed', token.slice(-6));
+			executer.kill();
+			this.tokenMap.delete(token);
+			const receiver = executer.receiver;
+			const v = this.tokenCountForUsers.get(receiver) - 1;
+			if (v > 0) {
+				this.tokenCountForUsers.set(receiver, v);
+			}
+			else {
+				this.tokenCountForUsers.delete(receiver);
+			}
+		}
+	}
+	/**
+	 * 
+	 * @returns {Promise<void>}
+	 */
+	waitForRequest() {
+		return new Promise(resolve => {
+			if (this.readyForRequest) {
+				this.readyForRequest = false;
+				resolve();
+			}
+			else {
+				this.executionPool.push(resolve);
+			}
+		});
+	}
+	putRequest() {
+		const item = this.executionPool.pop();
+		if (item) {
+			item();
+		}
+		else {
+			this.readyForRequest = true;
+		}
 	}
 }
 
-const wait = promisify(setTimeout);
-class ExecuterToken {
+class ExecuterToken extends EventEmitter {
 	/**
 	 * @param {import('./api.js').PaintToken} token
 	 * @param {string} receiver
 	 * @param {Executer} executer
 	 */
 	constructor(token, receiver, executer) {
+		super();
 		this.token = token;
 		this.receiver = receiver;
 		this.executer = executer;
@@ -380,8 +490,14 @@ class ExecuterToken {
 		this._status = null;
 		this.busies = 0;
 		this.lims = 0;
+		this.idles = 0;
+
+		this.killed = false;
 
 		this._run();
+	}
+	kill() {
+		this.killed = true;
 	}
 	/**
 	 * @param {import('./tokenManager.js').TokenStatus} status
@@ -390,7 +506,7 @@ class ExecuterToken {
 		if (this._status !== status) {
 			this._status = status;
 			const tokens = await this.executer.drawer.database.tokens();
-			tokens.updateOne({ token: this.token }, { $set: { status } });
+			/* no await */tokens.updateOne({ token: this.token }, { $set: { status } });
 		}
 	}
 	idleWait() {
@@ -398,21 +514,24 @@ class ExecuterToken {
 	}
 	async _run() {
 		await this.idleWait();
-		while (true) {
+		while (this._status !== 'invalid' && !this.killed) {
 			try {
 				await this.executer.drawer.board.initialize();
 			}
 			catch (_) {
-				await wait(COOLDOWN * Math.random() * 4);
+				await wait(1000);
+				continue;
 			}
+			await this.executer.waitForRequest();
 			const paint = this.executer.findTargetForUser(this.receiver);
+			// if (paint !== null) {
+			// 	log('%s uid=%s target=%s %s', this.token.slice(-6), this.receiver, formatPos(paint), showColor(paint.color));
+			// }
+			// else {
+			// 	log('%s uid=%s no target', this.token.slice(-6), this.receiver);
+			// }
 			if (paint !== null) {
-				log('%s uid=%s target=%s %s', this.token.slice(-6), this.receiver, formatPos(paint), showColor(paint.color));
-			}
-			else {
-				log('%s uid=%s no target', this.token.slice(-6), this.receiver);
-			}
-			if (paint !== null) {
+				this.idles = 0;
 				const release = this.executer.reserve(paint);
 				const result = await this.executer.drawer.api.paint(this.token, paint);
 				setTimeout(release, 100);// add a delay to avoid repainting
@@ -427,7 +546,7 @@ class ExecuterToken {
 					case 'network-error':
 					case 'rate-limited': {
 						this.lims++;
-						await wait(Math.min(this.lims, Math.random() * 10) * COOLDOWN);
+						await wait(Math.min(100 * this.lims, COOLDOWN));
 						break;
 					}
 					case 'server-error':
@@ -443,7 +562,7 @@ class ExecuterToken {
 							}
 							else {
 								this.setStatus('invalid');
-								return;
+								break;
 							}
 						}
 						await wait(100 * (2 ** this.busies));
@@ -451,13 +570,31 @@ class ExecuterToken {
 					}
 					case 'invalid-token': {
 						this.setStatus('invalid');
-						return;
+						break;
 					}
 				}
 			}
 			else {
+				this.idles++;
+				if ((this.idles & (this.idles + 1)) === 0) {
+					try {
+						const { ok } = await this.executer.drawer.api.validateToken(this.token);
+						if (!ok) {
+							this.setStatus('invalid');
+						}
+						else {
+							this.setStatus('working');
+						}
+					} catch (_) { }
+				}
+				else {
+					this.executer.putRequest();
+				}
 				await this.idleWait();
 			}
+		}
+		if (!this.killed) {
+			this.emit('destroyed');
 		}
 	}
 };

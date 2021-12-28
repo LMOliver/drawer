@@ -301,19 +301,37 @@ export class TaskManager extends EventEmitter {
 		}
 		return list;
 	}
-	async* getAllTasks() {
+	async getAllTasks() {
 		const tasks = await this.database.tasks();
 		const cursor = tasks.find({});
+		let items = [];
 		while (true) {
 			const result = await cursor.next();
 			if (result !== null) {
-				yield result;
+				items.push(result);
 			}
 			else {
 				cursor.close();
 				break;
 			}
 		}
+		return items;
+	}
+	async getAllTaskIDs() {
+		const tasks = await this.database.tasks();
+		const cursor = tasks.aggregate([{ $project: { _id: '$_id' } }]);
+		let items = [];
+		while (true) {
+			const result = await cursor.next();
+			if (result !== null) {
+				items.push(result);
+			}
+			else {
+				cursor.close();
+				break;
+			}
+		}
+		return items;
 	}
 	/**
 	 * @returns {express.Handler[]}

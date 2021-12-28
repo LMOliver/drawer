@@ -13,7 +13,7 @@ const log = debug('drawer:auth');
 
 /**
 @typedef {{
-	
+	admins:Set<string>;
 }} AuthManagerConfig
  */
 
@@ -45,13 +45,15 @@ export class AuthManager extends EventEmitter {
 	 * @param {Drawer} drawer
 	 * @param {AuthManagerConfig} config
 	 */
-	constructor(drawer, { }) {
+	constructor(drawer, { admins }) {
 		super();
 		this.drawer = drawer;
 		const { api, database, userManager } = this.drawer;
 		this.api = api;
 		this.database = database;
 		this.userManager = userManager;
+
+		this.admins = admins;
 	}
 	/**
 	 * @param {import('http').IncomingMessage} req 
@@ -113,6 +115,22 @@ export class AuthManager extends EventEmitter {
 				}
 				else {
 					res.status(401).send('没有登录').end();
+				}
+			},
+		];
+	}
+	/**
+	 * @returns {express.Handler[]}
+	 */
+	checkAndRequireAdmin() {
+		return [
+			...this.checkAndRequireAuth(),
+			(req, res, next) => {
+				if (this.admins.has(res.locals.auth.uid)) {
+					next();
+				}
+				else {
+					res.status(403).send('没有权限').end();
 				}
 			},
 		];

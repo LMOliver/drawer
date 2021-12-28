@@ -4,6 +4,7 @@ import { COLORS } from './constants.js';
 import { ensure } from './ensure/index.js';
 import { formatPos, showColor, showTime } from './log.js';
 import { Drawer } from './drawer.js';
+import { promisify } from 'util';
 
 const log = debug('drawer:board');
 const updateLog = debug('drawer:board:update');
@@ -92,7 +93,7 @@ export class Board extends EventEmitter {
 					}
 				})(event);
 				stateSet(state, x, y, color);
-				updateLog('[%s] %s %s', showTime(time), formatPos({x,y}), showColor(color));
+				updateLog('[%s] %s %s', showTime(time), formatPos({ x, y }), showColor(color));
 				this._database.paints().then(
 					collection => collection.insertOne({
 						time: new Date(time), x, y, color
@@ -133,7 +134,9 @@ export class Board extends EventEmitter {
 					.then(() => {
 						this.readyState = Board.OPEN;
 					})
-					.catch(error => {
+					.catch(async error => {
+						log('%O', error);
+						await promisify(setTimeout)(1000); // avoid 503
 						this.readyState = Board.CLOSED;
 						throw error;
 					})

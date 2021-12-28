@@ -5,7 +5,7 @@ import { ObjectId } from 'mongodb';
 import { ensure } from './ensure/index.js';
 import { ensureUID } from './authManager.js';
 import { Drawer } from './drawer.js';
-import { RateLimiter } from './rateLimiter.js';
+import { rateLimiter, RateLimiter } from './rateLimiter.js';
 
 const log = debug('drawer:token');
 
@@ -21,8 +21,10 @@ export class TokenManager extends EventEmitter {
 	/**
 	 * @param {Drawer} drawer 
 	 */
-	constructor({ api, database, authManager, userManager }, { }) {
+	constructor(drawer, { }) {
 		super();
+		this.drawer = drawer;
+		const { api, database, authManager, userManager } = this.drawer;
 		this.api = api;
 		this.database = database;
 		this.authManager = authManager;
@@ -64,6 +66,24 @@ export class TokenManager extends EventEmitter {
 	async allUsableTokens() {
 		const tokens = await this.database.tokens();
 		const cursor = tokens.find({ status: { $in: ['busy', 'waiting', 'working'] } });
+		let items = [];
+		while (true) {
+			const item = await cursor.next();
+			if (item) {
+				items.push(item);
+			}
+			else {
+				break;
+			}
+		}
+		return items;
+	}
+	async allTokens() {
+		const tokens = await this.database.tokens();
+		const cursor = tokens.aggregate([
+			{ $match: { status: { $in: ['busy', 'waiting', 'working'] } } },
+			{ $project: { token: '$token' } },
+		]);
 		let items = [];
 		while (true) {
 			const item = await cursor.next();
@@ -128,31 +148,43 @@ export class TokenManager extends EventEmitter {
 				}
 			},
 		});
-		const INVALID_COST = 30 * 1000;
-		const SUCCESS_COST = 5 * 1000;
-		const rateLimiter = new RateLimiter(INVALID_COST * 3);
+		const LOGINNED_COST = 1 * 1000;
+		const ANONYMOUS_COST = 10 * 1000;
+		const anonymousLimiter = new RateLimiter(ANONYMOUS_COST);
 		return [
-			new RateLimiter(2000).handler(1000),
-			rateLimiter.handler(SUCCESS_COST),
+			...this.authManager.checkAuth(),
+			(req, res, next) => {
+				anonymousLimiter.handle(req, res, next, res.locals.auth ? LOGINNED_COST : ANONYMOUS_COST);
+			},
 			express.json({ limit: '5kb' }),
 			async (req, res, next) => {
 				try {
 					const { token, receiver, remark } = ensureInput(req.body);
+					let rejected = false;
+					await Promise.race([
+						this.drawer.executer.waitForRequest()
+							.then(() => {
+								if (rejected) {
+									this.drawer.executer.putRequest();
+								}
+							}),
+						new Promise((_, reject) => {
+							setTimeout(() => {
+								rejected = true;
+								reject(new Error('time out'));
+							}, 5000);
+						})
+					]);
 					const result = await this.api.validateToken(token);
 					if (result.ok) {
 						const { isNewToken } = await this.addToken(token, remark, receiver, 'waiting');
-						if (!isNewToken) {
-							rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
-						}
 						res.status(200).json({ isNewToken }).end();
 					}
 					else {
-						rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
-						res.status(401).send(result.reason).end();
+						res.status(400).send(result.reason).end();
 					}
 				}
 				catch (error) {
-					rateLimiter.add(rateLimiter.key(req, res), INVALID_COST - SUCCESS_COST);
 					next(error);
 				}
 			},

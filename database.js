@@ -28,6 +28,9 @@ export class Database {
 		return connection.db(this._databaseName);
 	}
 	async init() {
+		const paints = await this.paints();
+		paints.createIndex({ time: -1 });
+		log('created index for database paints');
 		const auth = await this.auth();
 		await auth.createIndex('token', { unique: true });
 		await auth.createIndex('createdAt', { expireAfterSeconds: 5 * 86400 });
@@ -68,6 +71,9 @@ export class Database {
 	async users() {
 		return this.getDB().then(db => db.collection('users'));
 	}
+	/**
+	 * @returns {Promise<import('mongodb').Collection<{time:Date,x:number,y:number,color:number}>}
+	 */
 	async paints() {
 		return this.getDB().then(db => db.collection('paints'));
 	}
