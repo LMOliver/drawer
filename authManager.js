@@ -12,6 +12,7 @@ const log = debug('drawer:auth');
 /**
 @typedef {{
 	admins:Set<string>;
+	secure:boolean;
 }} AuthManagerConfig
  */
 
@@ -43,7 +44,7 @@ export class AuthManager extends EventEmitter {
 	 * @param {Drawer} drawer
 	 * @param {AuthManagerConfig} config
 	 */
-	constructor(drawer, { admins }) {
+	constructor(drawer, { admins, secure }) {
 		super();
 		this.drawer = drawer;
 		const { api, database, userManager } = this.drawer;
@@ -52,6 +53,7 @@ export class AuthManager extends EventEmitter {
 		this.userManager = userManager;
 
 		this.admins = admins;
+		this.secure = secure;
 	}
 	/**
 	 * @param {import('http').IncomingMessage} req 
@@ -151,7 +153,7 @@ export class AuthManager extends EventEmitter {
 						/**
 						 * @type {import('express').CookieOptions}
 						 */
-						const addCookie = { httpOnly: true, secure: true, path: '/api', sameSite: 'strict' };
+						const addCookie = { httpOnly: true, secure: this.secure, path: '/api', sameSite: 'strict' };
 						res.cookie('uid', uid, addCookie);
 						res.cookie('auth-token', authToken, addCookie);
 						await this.userManager.createUserIfNotExist({ uid, name });
@@ -178,7 +180,7 @@ export class AuthManager extends EventEmitter {
 					/**
 					 * @type {import('express').CookieOptions}
 					 */
-					const removeCookie = { httpOnly: true, secure: true, path: '/api', sameSite: 'strict', expires: new Date(0) };
+					const removeCookie = { httpOnly: true, secure: this.secure, path: '/api', sameSite: 'strict', expires: new Date(0) };
 					res.cookie('uid', '', removeCookie);
 					res.cookie('auth-token', '', removeCookie);
 					res.json({}).end();
