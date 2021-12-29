@@ -72,7 +72,7 @@ export class Database {
 		return this.getDB().then(db => db.collection('users'));
 	}
 	/**
-	 * @returns {Promise<import('mongodb').Collection<{time:Date,x:number,y:number,color:number}>}
+	 * @returns {Promise<import('mongodb').Collection<{time:Date,x:number,y:number,color:number}>>}
 	 */
 	async paints() {
 		return this.getDB().then(db => db.collection('paints'));
