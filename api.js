@@ -1,6 +1,7 @@
 import debug from 'debug';
 import fetch from 'node-fetch';
 import { PaintboardWS } from './api-ws.js';
+import { HEIGHT, WIDTH } from './constants.js';
 import { formatPos, showColor } from './log.js';
 /**
  * @typedef {string} PaintToken
@@ -66,7 +67,7 @@ export class API {
 	 */
 	async validateToken(token) {
 		validationLog('validate token');
-		const result = await this._paint(token, { x: -1, y: -1, color: -1 });
+		const result = await this._paint(token, { x: Math.floor(Math.random() * WIDTH), y: Math.floor(Math.random() * HEIGHT), color: 2 });
 		if (result.type === 'cooldowning') {
 			validationLog('validation successed');
 			return { ok: true };
