@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import { PaintboardWS } from './api-ws.js';
 import { HEIGHT, WIDTH } from './constants.js';
 import { formatPos, showColor } from './log.js';
+import { stringify } from 'qs';
 /**
  * @typedef {string} PaintToken
  * @typedef {{x:number,y:number,color:number}} Paint
@@ -97,7 +98,13 @@ export class API {
 					'Cache-Control': 'no-cache',
 					'Referrer': 'https://www.luogu.com.cn/paintboard',
 				},
-				body: `x=${x}&y=${y}&color=${color}&token=${token}&paint_token=${token}&paintToken=${token}&painttoken=${token}`,
+				body: stringify({
+					x, y, color,
+					token,
+					paint_token: token,
+					paintToken: token,
+					painttoken: token,
+				})
 			});
 			if (resp.ok) {
 				try {
