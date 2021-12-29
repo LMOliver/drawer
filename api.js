@@ -78,7 +78,7 @@ export class API {
 			return { ok: false, reason: message === '没有登录' ? 'token 无效' : message };
 		}
 		else {
-			validationLog('validation errored');
+			validationLog('validation errored type=%s', result.type);
 			throw new Error(result.message);
 		}
 	}
