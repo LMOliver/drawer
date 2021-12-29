@@ -101,13 +101,17 @@ export class TokenManager extends EventEmitter {
 	 */
 	async currentTokens(uid) {
 		const tokens = await this.database.tokens();
-		const cursor = tokens.find({ receiver: uid });
+		const cursor = tokens.find({ receiver: uid }, {
+			sort: [
+				['remark', 1],
+			]
+		});
 		/**
 		 @type {import('mongodb').WithId<{
 			token:import('./api.js').PaintToken;
 			remark:string|null;
 			receiver:string;
-			status:string;
+			status:TokenStatus;
 		}>[]}
 		 */
 		let items = [];

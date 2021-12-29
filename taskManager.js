@@ -286,7 +286,7 @@ export class TaskManager extends EventEmitter {
 	 */
 	async getTasks(owner) {
 		const tasks = await this.database.tasks();
-		const cursor = tasks.find({ owner });
+		const cursor = tasks.find({ owner }, { sort: [['weight', -1]] });
 		let list = [];
 		while (true) {
 			const result = await cursor.next();

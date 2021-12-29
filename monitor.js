@@ -1,11 +1,8 @@
 import debug from 'debug';
 import express from 'express';
-import compression from 'compression';
-import { Board } from './board.js';
 import { rateLimiter } from './rateLimiter.js';
 import { Drawer } from './drawer.js';
 import { ensure } from './ensure/index.js';
-import { START_TIME } from './constants.js';
 
 const log = debug('drawer:monitor');
 
@@ -54,25 +51,31 @@ export class Monitor {
 			...this.authManager.checkAndRequireAdmin(),
 			/**@type {express.Handler} */
 			(req, res, next) => {
-				const last = ensureInput(Number(req.query.last));
-				const qwq = new Date(last === -1 ? 0 : START_TIME.getTime() + last);
-				this.database.paints()
-					.then(p => p.find({ time: { $gt: qwq } }))
-					.then(async cursor => {
-						while (true) {
-							const result = await cursor.next();
-							if (!result) {
-								break;
-							}
-							const { x, y, color, time } = result;
-							res.write(new Uint8Array(Uint32Array.from([
-								Math.max(time.getTime() - START_TIME.getTime(), 0) | 0,
-								(x << 10 | y) << 8 | color
-							]).buffer));
-						}
+				(async () => {
+					const last = ensureInput(Number(req.query.last));
+					const paints = await this.database.paints();
+					const firstPaint = await paints.findOne({}, { sort: [['time', 1]] });
+					if (firstPaint === null) {
 						res.end();
-					})
-					.catch(next);
+						return;
+					}
+					let startTime = firstPaint.time.getTime();
+					const qwq = new Date(last === -1 ? 0 : startTime + last);
+					// bug: it ignores paints whose time ==== qwq
+					const cursor = paints.find({ time: { $gt: qwq } }, { sort: [['time', 1]] });
+					while (true) {
+						const result = await cursor.next();
+						if (!result) {
+							break;
+						}
+						const { x, y, color, time } = result;
+						res.write(new Uint8Array(Uint32Array.from([
+							Math.max(time.getTime() - startTime, 0) | 0,
+							(x << 10 | y) << 8 | color
+						]).buffer));
+					}
+					res.end();
+				})().catch(next);
 			}
 		]);
 		return router;

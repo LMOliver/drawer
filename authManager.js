@@ -1,5 +1,3 @@
-// TODO: update
-
 import express from 'express';
 import debug from 'debug';
 import { ensure, UserInputError, ensureUUID } from './ensure/index.js';

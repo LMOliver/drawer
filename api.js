@@ -67,7 +67,7 @@ export class API {
 	async validateToken(token) {
 		validationLog('validate token');
 		const result = await this._paint(token, { x: -1, y: -1, color: -1 });
-		if (result.type === 'bad-request' || result.type === 'cooldowning') {
+		if (result.type === 'cooldowning') {
 			validationLog('validation successed');
 			return { ok: true };
 		}
