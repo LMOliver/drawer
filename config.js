@@ -16,6 +16,7 @@ export function config() {
 		userManager: {},
 		authManager: {
 			admins: new Set(),
+			secure: false,
 		},
 		tokenManager: {},
 		taskManager: {},

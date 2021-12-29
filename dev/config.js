@@ -21,6 +21,7 @@ export function config() {
 			admins: new Set([
 				'25512@Luogu'
 			]),
+			secure: false,
 		},
 		tokenManager: {},
 		taskManager: {},
