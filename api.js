@@ -97,7 +97,7 @@ export class API {
 					'Cache-Control': 'no-cache',
 					'Referrer': 'https://www.luogu.com.cn/paintboard',
 				},
-				body: `x=${x}&y=${y}&color=${color}&token=${token}`,
+				body: `x=${x}&y=${y}&color=${color}&token=${token}&paint_token=${token}&paintToken=${token}&painttoken=${token}`,
 			});
 			if (resp.ok) {
 				try {

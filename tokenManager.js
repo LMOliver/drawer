@@ -5,13 +5,13 @@ import { ObjectId } from 'mongodb';
 import { ensure } from './ensure/index.js';
 import { ensureUID } from './authManager.js';
 import { Drawer } from './drawer.js';
-import { rateLimiter, RateLimiter } from './rateLimiter.js';
+import { RateLimiter } from './rateLimiter.js';
 
 const log = debug('drawer:token');
 
 const ensureToken = ensure({
 	type: 'string',
-	pattern: /^[0-9a-z]{40}$/,
+	pattern: /^[0-9a-zA-Z+\/=]{2,128}$/,
 });
 /**
  * @typedef {'working'|'waiting'|'busy'|'invalid'} TokenStatus
