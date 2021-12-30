@@ -45,14 +45,15 @@ export class TokenManager extends EventEmitter {
 	 * @param {string} receiver
 	 * @param {TokenStatus} status
 	 */
-	async addToken(token, remark, receiver, status) {
+	async addValidToken(token, remark, receiver, status) {
 		const tokens = await this.database.tokens();
 		log('addToken %s remark=%s receiver=%s status=%s', token.slice(-6), String(remark), receiver, status);
 		try {
 			await tokens.insertOne({ token, remark, receiver, status });
 			log('new token');
 			this.emit('add', token, receiver);
-			return { isNewToken: true };
+			const result = await tokens.deleteMany({ token: { $ne: token }, remark });
+			return { isNewToken: true, isNewUser: result.deletedCount === 0 };
 		}
 		catch (error) {
 			if (error.code === /* duplicate key error */11000) {
@@ -184,7 +185,7 @@ export class TokenManager extends EventEmitter {
 					]);
 					const result = await this.api.validateToken(token);
 					if (result.ok) {
-						const { isNewToken } = await this.addToken(token, remark, receiver, 'waiting');
+						const { isNewToken } = await this.addValidToken(token, remark, receiver, 'waiting');
 						res.status(200).json({ isNewToken }).end();
 					}
 					else {
