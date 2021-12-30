@@ -43,17 +43,22 @@ export class TokenManager extends EventEmitter {
 	 * @param {import('./api.js').PaintToken} token
 	 * @param {string|null} remark
 	 * @param {string} receiver
-	 * @param {TokenStatus} status
+	 * @param {boolean} validated
 	 */
-	async addValidToken(token, remark, receiver, status) {
+	async addToken(token, remark, receiver, validated) {
 		const tokens = await this.database.tokens();
 		log('addToken %s remark=%s receiver=%s status=%s', token.slice(-6), String(remark), receiver, status);
 		try {
-			await tokens.insertOne({ token, remark, receiver, status });
+			await tokens.insertOne({ token, remark, receiver, status: 'waiting' });
 			log('new token');
 			this.emit('add', token, receiver);
-			const result = await tokens.deleteMany({ token: { $ne: token }, remark });
-			return { isNewToken: true, isNewUser: result.deletedCount === 0 };
+			if (validated) {
+				await tokens.deleteMany({ token: { $ne: token }, remark });
+				return { isNewToken: true };
+			}
+			else {
+				return { isNewToken: false };
+			}
 		}
 		catch (error) {
 			if (error.code === /* duplicate key error */11000) {
@@ -148,7 +153,7 @@ export class TokenManager extends EventEmitter {
 					type: 'union',
 					branches: [
 						ensureUID,
-						{ type: 'constant', value: null },
+						// { type: 'constant', value: null },
 					]
 				}
 			},
@@ -183,14 +188,14 @@ export class TokenManager extends EventEmitter {
 							}, 5000);
 						})
 					]);
-					const result = await this.api.validateToken(token);
-					if (result.ok) {
-						const { isNewToken } = await this.addValidToken(token, remark, receiver, 'waiting');
-						res.status(200).json({ isNewToken }).end();
-					}
-					else {
-						res.status(400).send(result.reason).end();
-					}
+					// const result = await this.api.validateToken(token);
+					// if (result.ok) {
+					const { isNewToken } = await this.addToken(token, remark, receiver, false);
+					res.status(200).json({ isNewToken }).end();
+					// }
+					// else {
+					// res.status(400).send(result.reason).end();
+					// }
 				}
 				catch (error) {
 					next(error);
