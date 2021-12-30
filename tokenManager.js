@@ -2,7 +2,7 @@ import debug from 'debug';
 import EventEmitter from 'events';
 import express from 'express';
 import { ObjectId } from 'mongodb';
-import { ensure } from './ensure/index.js';
+import { ensure, UserInputError } from './ensure/index.js';
 import { ensureUID } from './authManager.js';
 import { Drawer } from './drawer.js';
 import { RateLimiter } from './rateLimiter.js';
@@ -164,6 +164,9 @@ export class TokenManager extends EventEmitter {
 			async (req, res, next) => {
 				try {
 					const { token, receiver, remark } = ensureInput(req.body);
+					if (remark !== token.split(':')[0] + '@Luogu') {
+						throw new UserInputError('incorrect remark');
+					}
 					let rejected = false;
 					await Promise.race([
 						this.drawer.executer.waitForRequest()
