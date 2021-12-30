@@ -11,7 +11,7 @@ const log = debug('drawer:token');
 
 const ensureToken = ensure({
 	type: 'string',
-	pattern: /^[0-9a-zA-Z+\/=]{2,128}$/,
+	pattern: /^[1-9]\d{0,7}:[a-zA-Z0-9]{16}$/,
 });
 /**
  * @typedef {'working'|'waiting'|'busy'|'invalid'} TokenStatus

@@ -48,7 +48,7 @@ function typeOfCode(status) {
 }
 
 /**
- * @typedef {'network-error'|'server-error'|'rate-limited'|'bad-request'|'invalid-token'|'cooldowning'|'success'} PaintResultType
+ * @typedef {'network-error'|'server-error'|'rate-limited'|'not-started'|'bad-request'|'invalid-token'|'cooldowning'|'success'} PaintResultType
  * @typedef {{type:PaintResultType,code:number,message:string}} PaintResult
  * @typedef {APIURLs} APIConfig
  * @typedef {{}} SuccessfulTokenValidationResult
@@ -89,6 +89,7 @@ export class API {
 	 * @returns {Promise<PaintResult>}
 	 */
 	async _paint(token, { x, y, color }) {
+		return { type: 'bad-request', code: -1, message: 'API 未知' };
 		try {
 			const resp = await fetch(this.urls.paint, {
 				method: 'POST',
@@ -99,18 +100,14 @@ export class API {
 					'Referrer': 'https://www.luogu.com.cn/paintboard',
 				},
 				body: stringify({
-					x, y, color,
-					token,
-					paint_token: token,
-					paintToken: token,
-					painttoken: token,
+					x, y, color, token,
 				})
 			});
 			if (resp.ok) {
 				try {
 					const { status, message } =/**@type {any}*/(await resp.json());
 					return {
-						type: typeOfCode(status),
+						type: (message || '').includes('未开始') ? 'not-started' : typeOfCode(status),
 						code: status,
 						message: message || '',
 					};

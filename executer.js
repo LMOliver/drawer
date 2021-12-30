@@ -6,7 +6,6 @@ import { COLORS, COOLDOWN, WIDTH, HEIGHT } from './constants.js';
 import { Board } from './board.js';
 import EventEmitter, { once } from 'events';
 import { ObjectId } from 'mongodb';
-import { formatPos, showColor } from './log.js';
 
 const log = debug('drawer:executer');
 
@@ -549,6 +548,7 @@ class ExecuterToken extends EventEmitter {
 						await wait(Math.min(100 * this.lims, COOLDOWN));
 						break;
 					}
+					case 'not-started':
 					case 'server-error':
 					case 'bad-request': {
 						await wait(COOLDOWN * 2);
