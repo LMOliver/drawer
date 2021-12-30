@@ -54,11 +54,8 @@ export class TokenManager extends EventEmitter {
 			this.emit('add', token, receiver);
 			if (validated) {
 				await tokens.deleteMany({ token: { $ne: token }, remark });
-				return { isNewToken: true };
 			}
-			else {
-				return { isNewToken: false };
-			}
+			return { isNewToken: true };
 		}
 		catch (error) {
 			if (error.code === /* duplicate key error */11000) {
