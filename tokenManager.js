@@ -47,7 +47,7 @@ export class TokenManager extends EventEmitter {
 	 */
 	async addToken(token, remark, receiver, validated) {
 		const tokens = await this.database.tokens();
-		log('addToken %s remark=%s receiver=%s status=%s', token.slice(-6), String(remark), receiver, status);
+		log('addToken %s remark=%s receiver=%s', token.slice(-6), String(remark), receiver);
 		try {
 			await tokens.insertOne({ token, remark, receiver, status: 'waiting' });
 			log('new token');
