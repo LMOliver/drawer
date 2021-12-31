@@ -129,6 +129,13 @@ export class API {
 					};
 				}
 				const { status, errorMessage, data } =/**@type {any}*/(await resp.json());
+				if (resp.status === 403 && errorMessage === '操作过于频繁') {
+					return {
+						type: 'cooldowning',
+						code: 403,
+						message: errorMessage,
+					};
+				}
 				return {
 					type: errorMessage && errorMessage.includes('未开始') ? 'not-started' : typeOfCode(status),
 					code: status,
