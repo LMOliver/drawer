@@ -347,7 +347,8 @@ export class Executer {
 			this.drawer.database.tasks()
 				.then(d => d.findOne({ _id: id }))
 				.then(task => {
-					if (task) {
+					// @ts-ignore task.banned
+					if (task && !task.banned) {
 						const { image, options, owner, verified } = task;
 						this.updateOrAdd(id.toHexString(), { image, options, owner, verified });
 					}
