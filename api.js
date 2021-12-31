@@ -73,13 +73,22 @@ export class API {
 		const resp = await fetch(url.toString(), {
 			method: 'POST',
 		});
+
 		if (resp.status === /* Forbidden */ 403 || resp.status === 418) {
 			const { errorMessage = '未知错误' } = /**@type {any}*/(await resp.json());
-			validationLog('validation failed %s', errorMessage);
-			return {
-				ok: false,
-				reason: errorMessage === 'Invalid token' ? 'token 无效' : errorMessage
-			};
+			if (errorMessage === '请求过于频繁') {
+				validationLog('validation passed %s', errorMessage);
+				return {
+					ok: true,
+				};
+			}
+			else {
+				validationLog('validation failed %s', errorMessage);
+				return {
+					ok: false,
+					reason: errorMessage === 'Invalid token' ? 'token 无效' : errorMessage
+				};
+			}
 
 		}
 		else if (resp.status === /* Bad Request */ 400 || resp.status === 200) {
