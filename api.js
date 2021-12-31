@@ -113,25 +113,23 @@ export class API {
 					x, y, color,
 				})
 			});
-			if (resp.ok) {
-				try {
-					const { status, message: errorMessage, data } =/**@type {any}*/(await resp.json());
+			try {
+				if (resp.status === 503 || resp.status === 429) {
 					return {
-						type: errorMessage && errorMessage.includes('未开始') ? 'not-started' : typeOfCode(status),
-						code: status,
-						message: errorMessage || data || '',
+						type: 'rate-limited',
+						code: resp.status,
+						message: '请求过于频繁',
 					};
 				}
-				catch (error) {
-					return { type: 'network-error', code: -1, message: error.message };
-				}
-			}
-			else {
+				const { status, message: errorMessage, data } =/**@type {any}*/(await resp.json());
 				return {
-					type: typeOfCode(resp.status),
-					code: resp.status,
-					message: resp.statusText,
+					type: errorMessage && errorMessage.includes('未开始') ? 'not-started' : typeOfCode(status),
+					code: status,
+					message: errorMessage || data || '',
 				};
+			}
+			catch (error) {
+				return { type: 'network-error', code: -1, message: error.message };
 			}
 		}
 		catch (error) {

@@ -7,6 +7,7 @@ import { Board } from './board.js';
 import EventEmitter, { once } from 'events';
 import { ObjectId } from 'mongodb';
 import { showToken } from './log.js';
+import { currentTime } from './time.js';
 
 const log = debug('drawer:executer');
 
@@ -490,8 +491,9 @@ class ExecuterToken extends EventEmitter {
 		/**@type {import('./tokenManager.js').TokenStatus|null} */
 		this._status = null;
 		this.busies = 0;
-		this.lims = 0;
-		this.idles = 0;
+		this.errors = 0;
+		this.lastPassedValidationTime = -Infinity;
+		this.passedValidations = 0;
 
 		this.killed = false;
 
@@ -516,6 +518,8 @@ class ExecuterToken extends EventEmitter {
 	async _run() {
 		await this.idleWait();
 		while (this._status !== 'invalid' && !this.killed) {
+			await this.executer.waitForRequest();
+
 			try {
 				await this.executer.drawer.board.initialize();
 			}
@@ -523,35 +527,33 @@ class ExecuterToken extends EventEmitter {
 				await wait(1000);
 				continue;
 			}
-			await this.executer.waitForRequest();
+
 			const paint = this.executer.findTargetForUser(this.receiver);
-			// if (paint !== null) {
-			// 	log('%s uid=%s target=%s %s', this.showToken(token), this.receiver, formatPos(paint), showColor(paint.color));
-			// }
-			// else {
-			// 	log('%s uid=%s no target', this.showToken(token), this.receiver);
-			// }
-			if (paint !== null) {
-				this.idles = 0;
+			if (paint === null) {
+				this.executer.putRequest();
+				await this.idleWait();
+			}
+			else {
 				const release = this.executer.reserve(paint);
 				const result = await this.executer.drawer.api.paint(this.token, paint);
 				setTimeout(release, 100);// add a delay to avoid repainting
 				switch (result.type) {
 					case 'success': {
 						this.busies = 0;
-						this.lims = 0;
+						this.errors = 0;
+						this.lastPassedValidationTime = currentTime();
 						this.setStatus('working');
 						await wait(COOLDOWN);
 						break;
 					}
 					case 'network-error':
+					case 'server-error':
 					case 'rate-limited': {
-						this.lims++;
-						await wait(Math.min(100 * this.lims, COOLDOWN));
+						this.errors++;
+						await wait(Math.min(1000 * this.errors, COOLDOWN));
 						break;
 					}
 					case 'not-started':
-					case 'server-error':
 					case 'bad-request': {
 						await wait(COOLDOWN);
 						break;
@@ -559,7 +561,8 @@ class ExecuterToken extends EventEmitter {
 					case 'cooldowning': {
 						this.busies++;
 						if (this.busies >= 3) {
-							if (this.busies < 10) {
+							if (this.busies < 15) {
+								this.lastPassedValidationTime = currentTime();
 								this.setStatus('busy');
 							}
 							else {
@@ -576,24 +579,23 @@ class ExecuterToken extends EventEmitter {
 					}
 				}
 			}
-			else {
-				if ((this.idles & (this.idles + 1)) === 0) {
-					try {
-						const { ok } = await this.executer.drawer.api.validateToken(this.token);
-						if (!ok) {
-							this.setStatus('invalid');
+
+			const now = currentTime();
+			if (now - this.lastPassedValidationTime > COOLDOWN * Math.max(2, Math.min(2 ** this.passedValidations, 10))) {
+				try {
+					await this.executer.waitForRequest();
+					const { ok } = await this.executer.drawer.api.validateToken(this.token);
+					if (!ok) {
+						this.setStatus('invalid');
+					}
+					else {
+						this.lastPassedValidationTime = currentTime();
+						if (this.passedValidations < 20) {// avoid overflow
+							this.passedValidations++;
 						}
-						else {
-							this.setStatus('working');
-						}
-						this.idles++;
-					} catch (_) { }
-				}
-				else {
-					this.executer.putRequest();
-					this.idles++;
-				}
-				await this.idleWait();
+						this.setStatus('working');
+					}
+				} catch (_) { }
 			}
 		}
 		if (!this.killed) {
