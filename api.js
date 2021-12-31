@@ -77,13 +77,13 @@ export class API {
 		if (resp.status === /* Forbidden */ 403 || resp.status === 418) {
 			const { errorMessage = '未知错误' } = /**@type {any}*/(await resp.json());
 			if (errorMessage === '请求过于频繁') {
-				validationLog('validation passed %s', errorMessage);
+				validationLog('validation passed %d %s', resp.status, errorMessage);
 				return {
 					ok: true,
 				};
 			}
 			else {
-				validationLog('validation failed %s', errorMessage);
+				validationLog('validation failed %d %s', resp.status, errorMessage);
 				return {
 					ok: false,
 					reason: errorMessage === 'Invalid token' ? 'token 无效' : errorMessage
