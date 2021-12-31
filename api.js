@@ -74,8 +74,8 @@ export class API {
 			method: 'POST',
 		});
 		if (resp.status === /* Forbidden */ 403 || resp.status === 418) {
-			validationLog('validation failed');
 			const { errorMessage = '未知错误' } = /**@type {any}*/(await resp.json());
+			validationLog('validation failed %s', errorMessage);
 			return {
 				ok: false,
 				reason: errorMessage === 'Invalid token' ? 'token 无效' : errorMessage
