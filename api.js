@@ -121,6 +121,13 @@ export class API {
 						message: '请求过于频繁',
 					};
 				}
+				if (resp.status === 200) {
+					return {
+						type: 'success',
+						code: 200,
+						message: '绘制成功',
+					};
+				}
 				const { status, errorMessage, data } =/**@type {any}*/(await resp.json());
 				return {
 					type: errorMessage && errorMessage.includes('未开始') ? 'not-started' : typeOfCode(status),
