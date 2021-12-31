@@ -133,16 +133,15 @@ export class Board extends EventEmitter {
 				this._connect()
 					.then(() => {
 						this.readyState = Board.OPEN;
+						delete this._connectPromise;
 					})
 					.catch(async error => {
 						log('%O', error);
 						await promisify(setTimeout)(1000); // avoid 503
 						this.readyState = Board.CLOSED;
+						delete this._connectPromise;
 						throw error;
 					})
-					.finally(() => {
-						delete this._connectPromise;
-					});
 			return this._connectPromise;
 		}
 		else if (this.readyState === Board.CONNECTING) {

@@ -76,22 +76,18 @@ export class PaintboardWS extends EventEmitter {
 		});
 	};
 	async _connect() {
-		try {
-			wsLog('connecting');
-			const ws = new WebSocket(this._websocketHref);
-			await Promise.race([
-				once(ws, 'open'),
-				once(ws, 'close').then(event => {
-					throw Object.assign(new Error('websocket closed before open'), event);
-				})
-			]);
-			await join(ws);
-			this._bindWS(ws);
-			wsLog('connected');
-			this.emit('open');
-		} catch (error) {
-			throw error;
-		}
+		wsLog('connecting');
+		const ws = new WebSocket(this._websocketHref);
+		await Promise.race([
+			once(ws, 'open'),
+			once(ws, 'close').then(event => {
+				throw Object.assign(new Error('websocket closed before open'), event);
+			})
+		]);
+		await join(ws);
+		this._bindWS(ws);
+		wsLog('connected');
+		this.emit('open');
 	}
 	/**
 	 * @returns {Promise<void>}
@@ -104,14 +100,13 @@ export class PaintboardWS extends EventEmitter {
 				this._connect()
 					.then(() => {
 						this.readyState = PaintboardWS.OPEN;
+						delete this._connectPromise;
 					})
 					.catch(error => {
 						this.readyState = PaintboardWS.CLOSED;
+						delete this._connectPromise;
 						throw error;
 					})
-					.finally(() => {
-						delete this._connectPromise;
-					});
 			return this._connectPromise;
 		}
 		else if (this.readyState === PaintboardWS.CONNECTING) {

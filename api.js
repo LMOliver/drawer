@@ -82,7 +82,7 @@ export class API {
 			};
 
 		}
-		else if (resp.status === /* Bad Request */ 400) {
+		else if (resp.status === /* Bad Request */ 400 || resp.status === 200) {
 			validationLog('validation passed');
 			return { ok: true };
 		}
