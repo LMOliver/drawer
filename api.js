@@ -121,7 +121,7 @@ export class API {
 						message: '请求过于频繁',
 					};
 				}
-				const { status, message: errorMessage, data } =/**@type {any}*/(await resp.json());
+				const { status, errorMessage, data } =/**@type {any}*/(await resp.json());
 				return {
 					type: errorMessage && errorMessage.includes('未开始') ? 'not-started' : typeOfCode(status),
 					code: status,
