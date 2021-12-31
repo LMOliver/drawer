@@ -6,6 +6,7 @@ import { ensure, UserInputError } from './ensure/index.js';
 import { ensureUID } from './authManager.js';
 import { Drawer } from './drawer.js';
 import { RateLimiter } from './rateLimiter.js';
+import { showToken } from './log.js';
 
 const log = debug('drawer:token');
 
@@ -41,15 +42,15 @@ export class TokenManager extends EventEmitter {
 	}
 	/**
 	 * @param {import('./api.js').PaintToken} token
-	 * @param {string|null} remark
 	 * @param {string} receiver
 	 * @param {boolean} validated
 	 */
-	async addToken(token, remark, receiver, validated) {
+	async addToken(token, receiver, validated) {
 		const tokens = await this.database.tokens();
-		log('addToken %s remark=%s receiver=%s', token.slice(-6), String(remark), receiver);
+		log('addToken %s receiver=%s', showToken(token), receiver);
+		const remark = token.split(':')[0];
 		try {
-			await tokens.insertOne({ token, remark, receiver, status: 'waiting' });
+			await tokens.insertOne({ token, remark, receiver, status: validated ? 'working' : 'waiting' });
 			log('new token');
 			this.emit('add', token, receiver);
 			if (validated) {
@@ -146,13 +147,6 @@ export class TokenManager extends EventEmitter {
 			entires: {
 				token: ensureToken,
 				receiver: ensureUID,
-				remark: {
-					type: 'union',
-					branches: [
-						ensureUID,
-						// { type: 'constant', value: null },
-					]
-				}
 			},
 		});
 		const LOGINNED_COST = 1 * 1000;
@@ -166,10 +160,7 @@ export class TokenManager extends EventEmitter {
 			express.json({ limit: '5kb' }),
 			async (req, res, next) => {
 				try {
-					const { token, receiver, remark } = ensureInput(req.body);
-					if (remark !== token.split(':')[0] + '@Luogu') {
-						throw new UserInputError('incorrect remark');
-					}
+					const { token, receiver } = ensureInput(req.body);
 					let rejected = false;
 					await Promise.race([
 						this.drawer.executer.waitForRequest()
@@ -185,14 +176,14 @@ export class TokenManager extends EventEmitter {
 							}, 5000);
 						})
 					]);
-					// const result = await this.api.validateToken(token);
-					// if (result.ok) {
-					const { isNewToken } = await this.addToken(token, remark, receiver, false);
-					res.status(200).json({ isNewToken }).end();
-					// }
-					// else {
-					// res.status(400).send(result.reason).end();
-					// }
+					const result = await this.api.validateToken(token);
+					if (result.ok) {
+						const { isNewToken } = await this.addToken(token, receiver, true);
+						res.status(200).json({ isNewToken }).end();
+					}
+					else {
+						res.status(400).send(result.reason).end();
+					}
 				}
 				catch (error) {
 					next(error);

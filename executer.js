@@ -6,6 +6,7 @@ import { COLORS, COOLDOWN, WIDTH, HEIGHT } from './constants.js';
 import { Board } from './board.js';
 import EventEmitter, { once } from 'events';
 import { ObjectId } from 'mongodb';
+import { showToken } from './log.js';
 
 const log = debug('drawer:executer');
 
@@ -420,7 +421,8 @@ export class Executer {
 			this.removeToken(token);
 		}
 		if (!executer) {
-			log('token %s added', token.slice(-6));
+			// paintLog('paint %s %s %s', formatPos(paint), showColor(paint.color), to));
+			log('token %s added', showToken(token));
 			const executer = new ExecuterToken(token, receiver, this);
 			this.tokenMap.set(token, executer);
 			this.tokenCountForUsers.set(receiver, (this.tokenCountForUsers.get(receiver) || 0) + 1);
@@ -435,7 +437,7 @@ export class Executer {
 	removeToken(token) {
 		const executer = this.tokenMap.get(token);
 		if (executer) {
-			log('token %s removed', token.slice(-6));
+			log('token %s removed', showToken(token));
 			executer.kill();
 			this.tokenMap.delete(token);
 			const receiver = executer.receiver;
@@ -524,10 +526,10 @@ class ExecuterToken extends EventEmitter {
 			await this.executer.waitForRequest();
 			const paint = this.executer.findTargetForUser(this.receiver);
 			// if (paint !== null) {
-			// 	log('%s uid=%s target=%s %s', this.token.slice(-6), this.receiver, formatPos(paint), showColor(paint.color));
+			// 	log('%s uid=%s target=%s %s', this.showToken(token), this.receiver, formatPos(paint), showColor(paint.color));
 			// }
 			// else {
-			// 	log('%s uid=%s no target', this.token.slice(-6), this.receiver);
+			// 	log('%s uid=%s no target', this.showToken(token), this.receiver);
 			// }
 			if (paint !== null) {
 				this.idles = 0;
@@ -551,7 +553,7 @@ class ExecuterToken extends EventEmitter {
 					case 'not-started':
 					case 'server-error':
 					case 'bad-request': {
-						await wait(COOLDOWN * 2);
+						await wait(COOLDOWN);
 						break;
 					}
 					case 'cooldowning': {
@@ -575,7 +577,6 @@ class ExecuterToken extends EventEmitter {
 				}
 			}
 			else {
-				this.idles++;
 				if ((this.idles & (this.idles + 1)) === 0) {
 					try {
 						const { ok } = await this.executer.drawer.api.validateToken(this.token);
@@ -585,10 +586,12 @@ class ExecuterToken extends EventEmitter {
 						else {
 							this.setStatus('working');
 						}
+						this.idles++;
 					} catch (_) { }
 				}
 				else {
 					this.executer.putRequest();
+					this.idles++;
 				}
 				await this.idleWait();
 			}

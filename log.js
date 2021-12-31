@@ -35,3 +35,11 @@ export function showTime(time) {
 	const qwq = x => x.toString().padStart(2, '0');
 	return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${qwq(date.getHours())}:${qwq(date.getMinutes())}:${qwq(date.getSeconds())}.${qwq(Math.floor(date.getMilliseconds() / 10))}`;
 }
+
+/**
+ * @param {import('./api.js').PaintToken} token 
+ */
+export function showToken(token) {
+	const [a, b] = token.split(':');
+	return `${a}:${b.slice(-3)}`;
+}

@@ -2,7 +2,7 @@ import debug from 'debug';
 import fetch from 'node-fetch';
 import { PaintboardWS } from './api-ws.js';
 import { HEIGHT, WIDTH } from './constants.js';
-import { formatPos, showColor } from './log.js';
+import { formatPos, showColor, showToken } from './log.js';
 import { stringify } from 'qs';
 /**
  * @typedef {string} PaintToken
@@ -27,16 +27,16 @@ function typeOfCode(status) {
 	if (status >= 200 && status < 300) {
 		return 'success';
 	}
-	else if (status === 500 || status === /** Too Many Requests */429) {
+	else if (status === 500 || status === /** Too Many Requests */ 429) {
 		return 'cooldowning';
 	}
-	else if (status === 401) {
+	else if (status === 401 || status === 403) {
 		return 'invalid-token';
 	}
 	else if (status >= 400 && status < 500) {
 		return 'bad-request';
 	}
-	else if (status === /** Service Unavailable */503) {
+	else if (status === /** Service Unavailable */ 503) {
 		return 'rate-limited';
 	}
 	else if (status >= 500 && status < 600) {
@@ -67,20 +67,29 @@ export class API {
 	 * @return {Promise<({ok:true}&SuccessfulTokenValidationResult)|{ok:false,reason:string}>}
 	 */
 	async validateToken(token) {
-		validationLog('validate token');
-		const result = await this._paint(token, { x: Math.floor(Math.random() * WIDTH), y: Math.floor(Math.random() * HEIGHT), color: 2 });
-		if (result.type === 'success' || result.type === 'cooldowning') {
-			validationLog('validation successed');
+		validationLog('validate token %s', showToken(token));
+		const url = new URL(this.urls.paint);
+		url.searchParams.set('token', token);
+		const resp = await fetch(url.toString(), {
+			method: 'POST',
+		});
+		if (resp.status === /* Forbidden */ 403) {
+			validationLog('validation failed');
+			const { errorMessage = '未知错误' } = /**@type {any}*/(await resp.json());
+			return {
+				ok: false,
+				reason: errorMessage === 'Invalid token' ? 'token 无效' : errorMessage
+			};
+
+		}
+		else if (resp.status === /* Bad Request */ 400) {
+			validationLog('validation passed');
 			return { ok: true };
 		}
-		else if (result.type === 'invalid-token') {
-			const message = result.message;
-			validationLog('validation failed');
-			return { ok: false, reason: message === '没有登录' ? 'token 无效' : message };
-		}
 		else {
-			validationLog('validation errored type=%s', result.type);
-			throw new Error(result.message);
+			const body = await resp.text();
+			validationLog('validation errored status=%s body=%s', resp.status, body);
+			throw new Error(body);
 		}
 	}
 	/**
@@ -89,9 +98,10 @@ export class API {
 	 * @returns {Promise<PaintResult>}
 	 */
 	async _paint(token, { x, y, color }) {
-		return { type: 'bad-request', code: -1, message: 'API 未知' };
 		try {
-			const resp = await fetch(this.urls.paint, {
+			const url = new URL(this.urls.paint);
+			url.searchParams.set('token', token);
+			const resp = await fetch(url.toString(), {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -100,16 +110,16 @@ export class API {
 					'Referrer': 'https://www.luogu.com.cn/paintboard',
 				},
 				body: stringify({
-					x, y, color, token,
+					x, y, color,
 				})
 			});
 			if (resp.ok) {
 				try {
-					const { status, message } =/**@type {any}*/(await resp.json());
+					const { status, message: errorMessage, data } =/**@type {any}*/(await resp.json());
 					return {
-						type: (message || '').includes('未开始') ? 'not-started' : typeOfCode(status),
+						type: errorMessage && errorMessage.includes('未开始') ? 'not-started' : typeOfCode(status),
 						code: status,
-						message: message || '',
+						message: errorMessage || data || '',
 					};
 				}
 				catch (error) {
@@ -133,9 +143,8 @@ export class API {
 	 * @param {{ x: number; y: number; color: number; }} paint
 	 */
 	async paint(token, paint) {
-		// paintLog('paint %s %s %s', formatPos(paint), showColor(paint.color), token.slice(-6));
 		const result = await this._paint(token, paint);
-		paintLog('%s %s %s', token.slice(-6), formatPos(paint), showColor(paint.color));
+		paintLog('%s %s %s', showToken(token), formatPos(paint), showColor(paint.color));
 		paintLog('%s %d %s', result.type, result.code, result.message);
 		return result;
 	}
