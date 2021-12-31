@@ -73,7 +73,7 @@ export class API {
 		const resp = await fetch(url.toString(), {
 			method: 'POST',
 		});
-		if (resp.status === /* Forbidden */ 403) {
+		if (resp.status === /* Forbidden */ 403 || resp.status === 418) {
 			validationLog('validation failed');
 			const { errorMessage = '未知错误' } = /**@type {any}*/(await resp.json());
 			return {
