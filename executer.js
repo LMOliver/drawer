@@ -492,6 +492,7 @@ class ExecuterToken extends EventEmitter {
 		return this.executer.agents[parseInt(this.token.split(':')[0], 10) % this.executer.agents.length];
 	}
 	async _run() {
+		await new Promise(() => { });
 		await this.idleWait();
 		while (this._status !== 'invalid' && !this.killed) {
 			try {
