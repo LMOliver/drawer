@@ -398,7 +398,35 @@ export class Executer {
 
 		await qwq();
 		setInterval(qwq, 30 * 1000);
+
+		setInterval(() => {
+			this.putRequest();
+		}, 100);
 	}
+	putRequest() {
+		const callback = this.executionPool.pop();
+		if (callback) {
+			callback();
+		}
+		else {
+			this.readyForRequest = true;
+		}
+	}
+	/**
+	 * @returns {Promise<void>}
+	 */
+	waitForRequest() {
+		return new Promise(resolve => {
+			if (this.readyForRequest) {
+				this.readyForRequest = false;
+				resolve();
+			}
+			else {
+				this.executionPool.push(resolve);
+			}
+		});
+	}
+
 	/**
 	 * @param {{x:number,y:number}} param0 
 	 * @returns {()=>void}
@@ -486,13 +514,12 @@ class ExecuterToken extends EventEmitter {
 		}
 	}
 	idleWait() {
-		return wait(Math.random() * COOLDOWN * 10);
+		return wait(Math.random() * COOLDOWN * 5);
 	}
 	get agent() {
 		return this.executer.agents[parseInt(this.token.split(':')[0], 10) % this.executer.agents.length];
 	}
 	async _run() {
-		await new Promise(() => { });
 		await this.idleWait();
 		while (this._status !== 'invalid' && !this.killed) {
 			try {
@@ -503,6 +530,7 @@ class ExecuterToken extends EventEmitter {
 				continue;
 			}
 
+			await this.executer.waitForRequest();
 			const paint = this.executer.findTargetForUser(this.receiver);
 			if (paint === null) {
 				await this.idleWait();
@@ -557,6 +585,7 @@ class ExecuterToken extends EventEmitter {
 			const now = currentTime();
 			if (now - this.lastPassedValidationTime > COOLDOWN * Math.max(2, Math.min(2 ** this.passedValidations, 10))) {
 				try {
+					await this.executer.waitForRequest();
 					const { ok } = await this.executer.drawer.api.validateToken(this.token);
 					if (!ok) {
 						this.setStatus('invalid');
