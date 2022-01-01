@@ -92,6 +92,10 @@ export class API {
 
 		}
 		else if (resp.status === /* Bad Request */ 400 || resp.status === 200) {
+			const text = await resp.text();
+			if (text.startsWith('<')) {
+				throw new Error('resp: Reload');
+			}
 			validationLog('validation passed');
 			return { ok: true };
 		}
