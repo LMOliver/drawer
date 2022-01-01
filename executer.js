@@ -291,7 +291,7 @@ export class Executer {
 		let weightSumsOfUsers = new Map();
 		let candidates = [];
 		for (const [id, task] of taskMap) {
-			if ((task.verified || task.owner === tokenReceiver) && task.working && task.find(filter) !== undefined) {
+			if (task.verified && task.working && task.find(filter) !== undefined) {
 				// console.log(id, task._positionsToCheck.size, task.weight);
 				const weight = task.weight * (this.tokenCountForUsers.get(task.owner) || 0);
 				if (weight > 0) {
@@ -563,7 +563,7 @@ class ExecuterToken extends EventEmitter {
 					case 'cooldowning': {
 						this.busies++;
 						if (this.busies >= 3) {
-							if (this.busies < 15) {
+							if (this.busies < 10) {
 								this.lastPassedValidationTime = currentTime();
 								this.setStatus('busy');
 							}
@@ -572,7 +572,7 @@ class ExecuterToken extends EventEmitter {
 								break;
 							}
 						}
-						await wait(1000 * (2 ** this.busies));
+						await wait(Math.max(10 * 1000, 1000 * (2 ** this.busies)));
 						break;
 					}
 					case 'invalid-token': {
