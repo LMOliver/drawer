@@ -76,7 +76,10 @@ export class API {
 
 		if (resp.status === /* Forbidden */ 403 || resp.status === 418) {
 			const { errorMessage = '未知错误' } = /**@type {any}*/(await resp.json());
-			if (errorMessage === '请求过于频繁' || errorMessage === '操作过于频繁') {
+			if (errorMessage === 'Cannot release lock in Mutex __destruct(): luogu:winter-paintboard:board-lock') {
+				throw new Error('resp: Server error');
+			}
+			else if (errorMessage === '请求过于频繁' || errorMessage === '操作过于频繁') {
 				validationLog('validation passed %d %s', resp.status, errorMessage);
 				return {
 					ok: true,
