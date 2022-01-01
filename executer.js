@@ -291,7 +291,7 @@ export class Executer {
 		let weightSumsOfUsers = new Map();
 		let candidates = [];
 		for (const [id, task] of taskMap) {
-			if (task.verified && task.working && task.find(filter) !== undefined) {
+			if ((task.verified || task.owner === tokenReceiver) && task.working && task.find(filter) !== undefined) {
 				// console.log(id, task._positionsToCheck.size, task.weight);
 				const weight = task.weight * (this.tokenCountForUsers.get(task.owner) || 0);
 				if (weight > 0) {
