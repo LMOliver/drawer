@@ -137,7 +137,8 @@ export class Board extends EventEmitter {
 					})
 					.catch(async error => {
 						log('%O', error);
-						await promisify(setTimeout)(1000); // avoid 503
+						await promisify(setTimeout)(1000);
+						process.exit(1); // deamon will restart the whole process
 						this.readyState = Board.CLOSED;
 						delete this._connectPromise;
 						throw error;
