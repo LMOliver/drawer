@@ -161,21 +161,6 @@ export class TokenManager extends EventEmitter {
 			async (req, res, next) => {
 				try {
 					const { token, receiver } = ensureInput(req.body);
-					let rejected = false;
-					await Promise.race([
-						this.drawer.executer.waitForRequest()
-							.then(() => {
-								if (rejected) {
-									this.drawer.executer.putRequest();
-								}
-							}),
-						new Promise((_, reject) => {
-							setTimeout(() => {
-								rejected = true;
-								reject(new Error('time out'));
-							}, 5000);
-						})
-					]);
 					const result = await this.api.validateToken(token);
 					if (result.ok) {
 						const { isNewToken } = await this.addToken(token, receiver, true);
