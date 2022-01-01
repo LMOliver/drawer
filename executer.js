@@ -530,8 +530,8 @@ class ExecuterToken extends EventEmitter {
 				continue;
 			}
 
-			// await this.executer.waitForRequest();
-			const paint = null;//this.executer.findTargetForUser(this.receiver);
+			await this.executer.waitForRequest();
+			const paint = this.executer.findTargetForUser(this.receiver);
 			if (paint === null) {
 				await this.idleWait();
 			}
