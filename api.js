@@ -102,15 +102,17 @@ export class API {
 		}
 	}
 	/**
+	 * @param {import('https').Agent} agent
 	 * @param {PaintToken} token
 	 * @param {Paint} param2 
 	 * @returns {Promise<PaintResult>}
 	 */
-	async _paint(token, { x, y, color }) {
+	async _paint(agent, token, { x, y, color }) {
 		try {
 			const url = new URL(this.urls.paint);
 			url.searchParams.set('token', token);
 			const resp = await fetch(url.toString(), {
+				agent,
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
@@ -160,11 +162,12 @@ export class API {
 		}
 	}
 	/**
+	 * @param {import('https').Agent} agent
 	 * @param {PaintToken} token
 	 * @param {{ x: number; y: number; color: number; }} paint
 	 */
-	async paint(token, paint) {
-		const result = await this._paint(token, paint);
+	async paint(agent, token, paint) {
+		const result = await this._paint(agent, token, paint);
 		paintLog('%s %s %s', showToken(token), formatPos(paint), showColor(paint.color));
 		paintLog('%s %d %s', result.type, result.code, result.message);
 		return result;

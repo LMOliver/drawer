@@ -9,23 +9,22 @@ const wsLog = debug('drawer:api:ws');
 async function join(ws) {
 	const joinMessage = JSON.stringify({ type: 'join_channel', channel: 'paintboard', channel_param: '' });
 	ws.send(joinMessage);
-	/**@type {[data: import('ws').RawData, isBinary: boolean]} */
-	// @ts-ignore
-	const joinResp = (await Promise.race([
-		once(ws, 'message'),
-		once(ws, 'close').then(event => {
-			throw Object.assign(new Error('websocket closed before receiving response'), event);
-		}),
-	]));
-	const [message] = joinResp;
-	const { type, result } = JSON.parse(message.toString());
-	if (type === 'result' && result === 'success') {
-		return;
+	for (let i = 0; i < 20; i++) {
+		/**@type {[data: import('ws').RawData, isBinary: boolean]} */
+		// @ts-ignore
+		const joinResp = (await Promise.race([
+			once(ws, 'message'),
+			once(ws, 'close').then(event => {
+				throw Object.assign(new Error('websocket closed before receiving response'), event);
+			}),
+		]));
+		const [message] = joinResp;
+		const { type, result } = JSON.parse(message.toString());
+		if (type === 'result' && result === 'success') {
+			return;
+		}
 	}
-	else {
-		ws.close();
-		throw Object.assign(new Error('incorrect response'), { resp: message.toString() });
-	}
+	throw new Error('incorrect message');
 }
 /**
  * @typedef {Readonly<{x:number,y:number,color:number,time:number}>} PaintboardUpdateEvent
@@ -106,7 +105,7 @@ export class PaintboardWS extends EventEmitter {
 						this.readyState = PaintboardWS.CLOSED;
 						delete this._connectPromise;
 						throw error;
-					})
+					});
 			return this._connectPromise;
 		}
 		else if (this.readyState === PaintboardWS.CONNECTING) {

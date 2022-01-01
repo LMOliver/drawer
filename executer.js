@@ -195,11 +195,11 @@ const wait = promisify(setTimeout);
 export class Executer {
 	/**
 	 * @param {Drawer} drawer
-	 * @param {{}} options
+	 * @param {{agents:import('https').Agent[]}} options
 	 */
 	constructor(drawer, options) {
 		this.drawer = drawer;
-		this.options = options;
+		this.agents = options.agents;
 		/**
 		@type {Map<
 			string,
@@ -398,10 +398,6 @@ export class Executer {
 
 		await qwq();
 		setInterval(qwq, 30 * 1000);
-
-		setInterval(() => {
-			this.putRequest();
-		}, 100);
 	}
 	/**
 	 * @param {{x:number,y:number}} param0 
@@ -452,30 +448,6 @@ export class Executer {
 			}
 		}
 	}
-	/**
-	 * 
-	 * @returns {Promise<void>}
-	 */
-	waitForRequest() {
-		return new Promise(resolve => {
-			if (this.readyForRequest) {
-				this.readyForRequest = false;
-				resolve();
-			}
-			else {
-				this.executionPool.push(resolve);
-			}
-		});
-	}
-	putRequest() {
-		const item = this.executionPool.pop();
-		if (item) {
-			item();
-		}
-		else {
-			this.readyForRequest = true;
-		}
-	}
 }
 
 class ExecuterToken extends EventEmitter {
@@ -514,13 +486,14 @@ class ExecuterToken extends EventEmitter {
 		}
 	}
 	idleWait() {
-		return wait(Math.random() * COOLDOWN);
+		// return wait(Math.random() * COOLDOWN);
+	}
+	get agent() {
+		return this.executer.agents[parseInt(this.token.split(':')[0], 10) % this.executer.agents.length];
 	}
 	async _run() {
 		await this.idleWait();
 		while (this._status !== 'invalid' && !this.killed) {
-			await this.executer.waitForRequest();
-
 			try {
 				await this.executer.drawer.board.initialize();
 			}
@@ -531,12 +504,11 @@ class ExecuterToken extends EventEmitter {
 
 			const paint = this.executer.findTargetForUser(this.receiver);
 			if (paint === null) {
-				this.executer.putRequest();
 				await this.idleWait();
 			}
 			else {
 				const release = this.executer.reserve(paint);
-				const result = await this.executer.drawer.api.paint(this.token, paint);
+				const result = await this.executer.drawer.api.paint(this.agent, this.token, paint);
 				setTimeout(release, 100);// add a delay to avoid repainting
 				switch (result.type) {
 					case 'success': {
@@ -584,7 +556,6 @@ class ExecuterToken extends EventEmitter {
 			const now = currentTime();
 			if (now - this.lastPassedValidationTime > COOLDOWN * Math.max(2, Math.min(2 ** this.passedValidations, 10))) {
 				try {
-					await this.executer.waitForRequest();
 					const { ok } = await this.executer.drawer.api.validateToken(this.token);
 					if (!ok) {
 						this.setStatus('invalid');

@@ -1,3 +1,6 @@
+import { globalAgent } from 'https';
+import a from 'https-proxy-agent';
+const { HttpsProxyAgent } = a;
 /**
  * @returns {import('./drawer.js').DrawConfig}
  */
@@ -20,7 +23,11 @@ export function config() {
 		},
 		tokenManager: {},
 		taskManager: {},
-		executer: {},
+		executer: {
+			agents: [
+				globalAgent,
+			],
+		},
 		monitor: {},
 		server: {
 			port: 3456,
