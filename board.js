@@ -39,6 +39,21 @@ export class Board extends EventEmitter {
 		 * @type {import('./api.js').BoardState|null}
 		 */
 		this._state = null;
+		this._run();
+	}
+	_run() {
+		setInterval(() => {
+			this.initialize();
+		}, 10 * 1000);
+		let cnt = 0;
+		setInterval(() => {
+			if (this.readyState === Board.OPEN) {
+				cnt = 0;
+			}
+			else if (++cnt >= 6) {
+				process.exit(1); // deamon will restart the whole process
+			}
+		}, 10 * 1000);
 	}
 	/**
 	 * @returns {import('./api.js').BoardState}
@@ -138,11 +153,10 @@ export class Board extends EventEmitter {
 					.catch(async error => {
 						log('%O', error);
 						await promisify(setTimeout)(1000);
-						process.exit(1); // deamon will restart the whole process
 						this.readyState = Board.CLOSED;
 						delete this._connectPromise;
 						throw error;
-					})
+					});
 			return this._connectPromise;
 		}
 		else if (this.readyState === Board.CONNECTING) {
