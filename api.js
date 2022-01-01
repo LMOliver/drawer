@@ -72,6 +72,11 @@ export class API {
 		url.searchParams.set('token', token);
 		const resp = await fetch(url.toString(), {
 			method: 'POST',
+			body: stringify({
+				x: -1,
+				y: -1,
+				color: -1,
+			}),
 		});
 
 		if (resp.status === /* Forbidden */ 403 || resp.status === 418) {
