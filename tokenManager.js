@@ -54,7 +54,7 @@ export class TokenManager extends EventEmitter {
 			log('new token');
 			this.emit('add', token, receiver);
 			if (validated) {
-				await tokens.deleteMany({ token: { $ne: token }, remark });
+				await tokens.deleteMany({ token: { $ne: token }, receiver, remark });
 			}
 			return { isNewToken: true };
 		}

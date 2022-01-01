@@ -580,16 +580,10 @@ class ExecuterToken extends EventEmitter {
 					case 'cooldowning': {
 						this.busies++;
 						this.lastPassedValidationTime = currentTime();
-						if (this.busies >= 3) {
-							if (this.busies < 10) {
-								this.setStatus('busy');
-							}
-							else {
-								this.setStatus('invalid');
-								break;
-							}
+						if (this.busies >= 4) {
+							this.setStatus('busy');
 						}
-						await wait(10 * 1000 * this.busies);
+						await wait(Math.min(10 * 1000 * this.busies, 10 * 60 * 1000));
 						break;
 					}
 					case 'invalid-token': {
