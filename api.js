@@ -133,11 +133,21 @@ export class API {
 					};
 				}
 				if (resp.status === 200) {
-					return {
-						type: 'success',
-						code: 200,
-						message: '绘制成功',
-					};
+					const text = await resp.text();
+					if (text.startsWith('<')) {
+						return {
+							type: 'network-error',
+							code: 200,
+							message: 'resp: Reload',
+						};
+					}
+					else {
+						return {
+							type: 'success',
+							code: 200,
+							message: '绘制成功',
+						};
+					}
 				}
 				const { status, errorMessage, data } =/**@type {any}*/(await resp.json());
 				if (resp.status === 403 && errorMessage === '操作过于频繁') {
