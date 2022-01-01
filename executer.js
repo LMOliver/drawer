@@ -563,6 +563,7 @@ class ExecuterToken extends EventEmitter {
 						this.lastPassedValidationTime = currentTime();
 						this.setStatus('working');
 						await wait(COOLDOWN);
+						await wait(4 * 1000);
 						break;
 					}
 					case 'network-error':
@@ -583,7 +584,7 @@ class ExecuterToken extends EventEmitter {
 						if (this.busies >= 4) {
 							this.setStatus('busy');
 						}
-						await wait(Math.min(10 * 1000 * this.busies, 10 * 60 * 1000));
+						await wait(Math.min(20 * 1000 * this.busies, 10 * 60 * 1000));
 						break;
 					}
 					case 'invalid-token': {
