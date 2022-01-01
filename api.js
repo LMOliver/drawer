@@ -99,7 +99,7 @@ export class API {
 			if (text.startsWith('<')) {
 				throw new Error('resp: Reload');
 			}
-			validationLog('validation passed');
+			validationLog('validation passed %d %s', resp.status, text);
 			return { ok: true };
 		}
 		else {
