@@ -401,7 +401,7 @@ export class Executer {
 
 		setInterval(() => {
 			this.putRequest();
-		}, 100);
+		}, 100 / this.agents.length);
 	}
 	putRequest() {
 		const callback = this.executionPool.shift();
