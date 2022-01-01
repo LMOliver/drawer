@@ -572,7 +572,7 @@ class ExecuterToken extends EventEmitter {
 								break;
 							}
 						}
-						await wait(100 * (2 ** this.busies));
+						await wait(1000 * (2 ** this.busies));
 						break;
 					}
 					case 'invalid-token': {
