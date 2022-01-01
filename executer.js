@@ -404,7 +404,7 @@ export class Executer {
 		}, 100);
 	}
 	putRequest() {
-		const callback = this.executionPool.pop();
+		const callback = this.executionPool.shift();
 		if (callback) {
 			callback();
 		}
@@ -572,7 +572,7 @@ class ExecuterToken extends EventEmitter {
 								break;
 							}
 						}
-						await wait(Math.max(10 * 1000, 1000 * (2 ** this.busies)));
+						await wait(10 * 1000 * this.busies);
 						break;
 					}
 					case 'invalid-token': {
