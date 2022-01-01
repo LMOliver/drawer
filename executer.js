@@ -534,6 +534,23 @@ class ExecuterToken extends EventEmitter {
 			const paint = this.executer.findTargetForUser(this.receiver);
 			if (paint === null) {
 				await this.idleWait();
+				const now = currentTime();
+				if (now - this.lastPassedValidationTime > COOLDOWN * Math.max(2, Math.min(2 ** this.passedValidations, 10))) {
+					try {
+						await this.executer.waitForRequest();
+						const { ok } = await this.executer.drawer.api.validateToken(this.token);
+						if (!ok) {
+							this.setStatus('invalid');
+						}
+						else {
+							this.lastPassedValidationTime = currentTime();
+							if (this.passedValidations < 20) {// avoid overflow
+								this.passedValidations++;
+							}
+							this.setStatus('working');
+						}
+					} catch (_) { }
+				}
 			}
 			else {
 				const release = this.executer.reserve(paint);
@@ -546,7 +563,6 @@ class ExecuterToken extends EventEmitter {
 						this.lastPassedValidationTime = currentTime();
 						this.setStatus('working');
 						await wait(COOLDOWN);
-						await wait(10 * 1000);
 						break;
 					}
 					case 'network-error':
@@ -581,24 +597,6 @@ class ExecuterToken extends EventEmitter {
 						break;
 					}
 				}
-			}
-
-			const now = currentTime();
-			if (now - this.lastPassedValidationTime > COOLDOWN * Math.max(2, Math.min(2 ** this.passedValidations, 10))) {
-				try {
-					await this.executer.waitForRequest();
-					const { ok } = await this.executer.drawer.api.validateToken(this.token);
-					if (!ok) {
-						this.setStatus('invalid');
-					}
-					else {
-						this.lastPassedValidationTime = currentTime();
-						if (this.passedValidations < 20) {// avoid overflow
-							this.passedValidations++;
-						}
-						this.setStatus('working');
-					}
-				} catch (_) { }
 			}
 		}
 		if (!this.killed) {
