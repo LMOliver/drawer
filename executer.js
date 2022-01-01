@@ -486,7 +486,7 @@ class ExecuterToken extends EventEmitter {
 		}
 	}
 	idleWait() {
-		return wait(Math.random() * COOLDOWN);
+		return wait(Math.random() * COOLDOWN * 10);
 	}
 	get agent() {
 		return this.executer.agents[parseInt(this.token.split(':')[0], 10) % this.executer.agents.length];
