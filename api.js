@@ -176,6 +176,15 @@ export class API {
 						message: errorMessage,
 					};
 				}
+				if (status === 418 && errorMessage.includes(
+					'Cannot release lock')
+				) {
+					return {
+						type: 'server-error',
+						code: 418,
+						message: 'Cannot release lock'
+					};
+				}
 				return {
 					type: errorMessage && errorMessage.includes('未开始') ? 'not-started' : typeOfCode(status),
 					code: status,

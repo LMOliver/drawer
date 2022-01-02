@@ -442,6 +442,9 @@ export class Executer {
 	 */
 	reserve({ x, y }) {
 		const index = x * HEIGHT + y;
+		if (this.isPending[index]) {
+			log('error: already reserved');
+		}
 		this.isPending[index] = 1;
 		return () => { this.isPending[index] = 0; };
 	}
@@ -564,7 +567,7 @@ class ExecuterToken extends EventEmitter {
 			else {
 				const release = this.executer.reserve(paint);
 				const result = await this.executer.drawer.api.paint(this.agent, this.token, paint);
-				setTimeout(release, 100);// add a delay to avoid repainting
+				setTimeout(release, 1000);// add a delay to avoid repainting
 				switch (result.type) {
 					case 'success': {
 						this.busies = 0;
