@@ -578,7 +578,7 @@ class ExecuterToken extends EventEmitter {
 					case 'server-error':
 					case 'rate-limited': {
 						this.errors++;
-						await wait(Math.min(1000 * this.errors, COOLDOWN));
+						await wait(COOLDOWN);
 						break;
 					}
 					case 'not-started':
@@ -592,7 +592,7 @@ class ExecuterToken extends EventEmitter {
 						if (this.busies >= 2) {
 							this.setStatus('busy');
 						}
-						await wait(Math.min(1000 * 4 ** this.busies, 10 * 60 * 1000));
+						await wait(Math.min(Math.max(COOLDOWN, 1000 * 4 ** this.busies), 10 * 60 * 1000));
 						break;
 					}
 					case 'invalid-token': {
