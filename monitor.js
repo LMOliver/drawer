@@ -97,6 +97,25 @@ export class Monitor {
 				})().catch(next);
 			},
 		]);
+		router.get('/all-tokens',[
+			...this.authManager.checkAndRequireAdmin(),
+			/**@type {express.Handler} */
+			(req, res, next) => {
+				(async () => {
+					const result = [];
+					const tokens = await this.database.tokens();
+					const it = tokens.find({});
+					while (true) {
+						const task = await it.next();
+						if (!task) {
+							break;
+						}
+						result.push(task);
+					}
+					res.status(200).json(result);
+				})().catch(next);
+			},
+		]);
 		return router;
 	}
 }
