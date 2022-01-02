@@ -217,7 +217,7 @@ export class Executer {
 		this.isPending = new Uint8Array(WIDTH * HEIGHT).fill(0);
 		/**@type {(()=>void)[]} */
 		this.executionPool = [];
-		this.readyForRequest = true;
+		this.requestBucketSize = 0;
 
 		this.initializationPromise = this._run();
 	}
@@ -399,9 +399,16 @@ export class Executer {
 		await qwq();
 		setInterval(qwq, 30 * 1000);
 
+		let lastUpdate = currentTime();
+		const per = (100 / this.agents.length);
 		setInterval(() => {
-			this.putRequest();
-		}, 100 / this.agents.length);
+			const now = currentTime();
+			const count = Math.floor((now - lastUpdate) / per);
+			lastUpdate += count * per;
+			for (let i = 0; i < Math.min(count, 10); i++) {
+				this.putRequest();
+			}
+		}, 100);
 	}
 	putRequest() {
 		const callback = this.executionPool.shift();
@@ -409,7 +416,9 @@ export class Executer {
 			callback();
 		}
 		else {
-			this.readyForRequest = true;
+			if (this.requestBucketSize < 20) {
+				this.requestBucketSize++;
+			}
 		}
 	}
 	/**
@@ -417,8 +426,8 @@ export class Executer {
 	 */
 	waitForRequest() {
 		return new Promise(resolve => {
-			if (this.readyForRequest) {
-				this.readyForRequest = false;
+			if (this.requestBucketSize >= 0) {
+				this.requestBucketSize--;
 				resolve();
 			}
 			else {
