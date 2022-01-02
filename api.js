@@ -190,8 +190,14 @@ export class API {
 	 */
 	async paint(agent, token, paint) {
 		const result = await this._paint(agent, token, paint);
-		paintLog('%s %s %s', showToken(token), formatPos(paint), showColor(paint.color));
-		paintLog('%s %d %s', result.type, result.code, result.message);
+		paintLog('%s %s %s %s %d %s',
+			showToken(token),
+			formatPos(paint),
+			showColor(paint.color),
+			result.type,
+			result.code,
+			result.message
+		);
 		return result;
 	}
 
