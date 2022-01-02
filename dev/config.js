@@ -1,15 +1,13 @@
+import { globalAgent } from 'https';
 /**
  * @returns {import('../drawer.js').DrawConfig}
  */
 export function config() {
 	return {
 		api: {
-			// paint: 'http://10.196.2.7:8000/paintBoard/paint',
-			// websocket: 'ws://10.196.2.7:8000/ws',
-			paint: 'http://localhost:8000/paintBoard/paint',
-			board: 'http://localhost:8000/paintBoard/board',
-			// board: 'https://www.luogu.com.cn/paintboard/board',
-			websocket: 'ws://localhost:8000/ws',
+			paint: 'https://www.luogu.com.cn/paintboard/paint',
+			board: 'https://www.luogu.com.cn/paintboard/board',
+			websocket: 'wss://ws.luogu.com.cn/ws',
 		},
 		board: {},
 		database: {
@@ -25,7 +23,11 @@ export function config() {
 		},
 		tokenManager: {},
 		taskManager: {},
-		executer: {},
+		executer: {
+			agents: [
+				globalAgent
+			],
+		},
 		monitor: {},
 		server: {
 			port: 3456,

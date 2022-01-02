@@ -5,7 +5,7 @@ import { ObjectId } from 'mongodb';
 import { ensure, UserInputError } from './ensure/index.js';
 import { ensureUID } from './authManager.js';
 import { Drawer } from './drawer.js';
-import { RateLimiter } from './rateLimiter.js';
+import { rateLimiter, RateLimiter } from './rateLimiter.js';
 import { showToken } from './log.js';
 
 const log = debug('drawer:token');
@@ -66,6 +66,30 @@ export class TokenManager extends EventEmitter {
 				throw error;
 			}
 		}
+	}
+	/**
+	 * @param {string[]} uids 
+	 * @param {string} receiver 
+	 */
+	async deleteTokens(uids, receiver) {
+		const tokens = await this.database.tokens();
+		const result = await Promise.all(
+			uids.map(uid =>
+				tokens.findOneAndDelete({ remark: uid, receiver })
+					.then(result => {
+						if (result.value) {
+							return { ok: true, token: result.value.token };
+						}
+						else {
+							throw new Error('token 不存在');
+						}
+					})
+					.catch(error => {
+						return { ok: false, reason: error.message || error.toString() };
+					})
+			)
+		);
+		return result;
 	}
 	async allUsableTokens() {
 		const tokens = await this.database.tokens();
@@ -194,9 +218,34 @@ export class TokenManager extends EventEmitter {
 			},
 		];
 	}
+	/**
+	 * @returns {express.Handler[]}
+	 */
+	deleteTokensHandler() {
+		const ensureInput = ensure({
+			type: 'array',
+			maxLength: 1000,
+			item: ensureUID,
+		});
+		return [
+			...this.authManager.checkAndRequireAuth(),
+			rateLimiter(10 * 1000, 2),
+			express.json({ limit: '100kb' }),
+			(req, res, next) => {
+				const { uid } = res.locals.auth;
+				const uidsToDelete = ensureInput(req.body);
+				this.deleteTokens(uidsToDelete, uid)
+					.then(result => {
+						res.json(result).end();
+					})
+					.catch(next);
+			}
+		];
+	}
 	router() {
 		return express.Router()
 			.get('/tokens', this.tokensForMeHandler())
-			.post('/tokens', this.uploadTokenHandler());
+			.post('/tokens', this.uploadTokenHandler())
+			.delete('/tokens', this.deleteTokensHandler());
 	}
 }
