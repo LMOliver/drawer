@@ -144,6 +144,13 @@ export class API {
 						message: '请求过于频繁',
 					};
 				}
+				if (resp.status === 500) {
+					return {
+						type: 'server-error',
+						code: 500,
+						message: await resp.text(),
+					};
+				}
 				if (resp.status === 200) {
 					const text = await resp.text();
 					if (text.startsWith('<')) {
