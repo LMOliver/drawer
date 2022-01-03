@@ -127,6 +127,7 @@ export class Board extends EventEmitter {
 		Promise.race([
 			once(pbws, 'close'),
 			once(errorEmitter, 'nonexist'),
+			new Promise(resolve => setTimeout(resolve, 3 * 60 * 1000)),
 		])
 			.catch(error => {
 				log('%O', error);
