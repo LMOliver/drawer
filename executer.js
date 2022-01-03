@@ -568,7 +568,7 @@ class ExecuterToken extends EventEmitter {
 			else {
 				const release = this.executer.reserve(paint);
 				const result = await this.executer.drawer.api.paint(this.agent, this.token, paint);
-				setTimeout(release, 1000);// add a delay to avoid repainting
+				setTimeout(release, 3 * 60 * 1000);// add a delay to avoid repainting
 				switch (result.type) {
 					case 'success': {
 						this.busies = 0;
