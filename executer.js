@@ -302,7 +302,7 @@ export class Executer {
 		}
 		for (let item of candidates) {
 			item.weight /= /**@type {number}*/(weightSumsOfUsers.get(item.task.owner));
-			item.weight /= item.task._positionsToCheck.size; // incorrect but fast, and have some state
+			// item.weight /= item.task._positionsToCheck.size; // incorrect but fast, and have some state
 		}
 		const sumWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
 		if (sumWeight === 0) {
